@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Media Toolbox</title>
+<meta name="description" content="Công cụ xử lý ảnh, audio, video chạy hoàn toàn trên trình duyệt — không upload, không backend.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600;800&family=Montserrat:wght@700;900&family=Playfair+Display:ital,wght@0,700;1,700&family=Lobster&family=Roboto+Mono:wght@700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">🎬 Media Toolbox</div>
+  <div class="tagline">100% chạy trên trình duyệt · không upload · không lưu trữ</div>
+</header>
+
+<nav class="tabs" id="tabs">
+  <button data-tab="convert" class="active">🔁 Chuyển định dạng</button>
+  <button data-tab="compress">🗜️ Nén ảnh</button>
+  <button data-tab="edit">✂️ Cắt &amp; Resize</button>
+  <button data-tab="imgvideo">🖼️ Ảnh + Audio → Video</button>
+  <button data-tab="textvideo">🔤 Text + Audio → Video</button>
+</nav>
+
+<main>
+<!-- ============ CONVERT ============ -->
+<section class="panel active" id="tab-convert">
+  <h2>Chuyển định dạng ảnh</h2>
+  <p class="hint">Hỗ trợ đầu vào: HEIC/HEIF, JPG, PNG, WebP, GIF (khung đầu), BMP, AVIF, SVG… Xử lý hàng loạt. Đầu ra: JPG, PNG, WebP (trình duyệt không mã hoá được HEIC/AVIF; Safari không xuất được WebP).</p>
+  <label class="drop" data-input="convFiles">
+    <input type="file" id="convFiles" accept="image/*,.heic,.heif" multiple hidden>
+    <span>Kéo thả ảnh vào đây hoặc <u>bấm để chọn</u></span>
+  </label>
+  <div class="row">
+    <label>Định dạng đích
+      <select id="convFormat"></select>
+    </label>
+    <label>Chất lượng <output id="convQOut">92</output>%
+      <input type="range" id="convQ" min="10" max="100" value="92">
+    </label>
+    <label>Nền khi chuyển sang JPG
+      <input type="color" id="convBg" value="#ffffff">
+    </label>
+  </div>
+  <div class="row">
+    <button class="primary" id="convRun">Chuyển đổi</button>
+    <button id="convZip" disabled>Tải tất cả (.zip)</button>
+    <button id="convShare" disabled hidden>Chia sẻ / Lưu tất cả vào Ảnh</button>
+    <button id="convClear">Xoá danh sách</button>
+  </div>
+  <div class="results" id="convResults"></div>
+</section>
+
+<!-- ============ COMPRESS ============ -->
+<section class="panel" id="tab-compress">
+  <h2>Nén ảnh</h2>
+  <p class="hint"><b>Lossless</b> (không đổi pixel): PNG/BMP được nén lại tối ưu; JPG được bỏ metadata (GPS, ảnh thumbnail, XMP…) mà không mã hoá lại, vẫn giữ hướng xoay &amp; màu ICC. <b>Lossy</b>: giảm chất lượng JPG/WebP hoặc giảm bảng màu PNG để file nhỏ hơn nhiều. Nếu kết quả không nhỏ hơn, file gốc được giữ lại.</p>
+  <label class="drop" data-input="cmpFiles">
+    <input type="file" id="cmpFiles" accept="image/*,.heic,.heif" multiple hidden>
+    <span>Kéo thả ảnh vào đây hoặc <u>bấm để chọn</u></span>
+  </label>
+  <div class="row">
+    <label>Chế độ
+      <select id="cmpMode">
+        <option value="lossless">Lossless (PNG tối ưu, không mất chất lượng)</option>
+        <option value="lossy">Lossy (giữ định dạng gốc, giảm chất lượng)</option>
+        <option value="webp">Chuyển sang WebP (nhỏ nhất)</option>
+      </select>
+    </label>
+    <label id="cmpQWrap">Chất lượng <output id="cmpQOut">80</output>%
+      <input type="range" id="cmpQ" min="10" max="100" value="80">
+    </label>
+    <label>Giới hạn cạnh dài (px, 0 = giữ nguyên)
+      <input type="number" id="cmpMax" value="0" min="0" step="100">
+    </label>
+  </div>
+  <div class="row">
+    <button class="primary" id="cmpRun">Nén</button>
+    <button id="cmpZip" disabled>Tải tất cả (.zip)</button>
+    <button id="cmpShare" disabled hidden>Chia sẻ / Lưu tất cả vào Ảnh</button>
+    <button id="cmpClear">Xoá danh sách</button>
+  </div>
+  <div class="results" id="cmpResults"></div>
+</section>
+
+<!-- ============ EDIT ============ -->
+<section class="panel" id="tab-edit">
+  <h2>Cắt, xoay, đổi tỉ lệ &amp; resize</h2>
+  <label class="drop small" data-input="edFile">
+    <input type="file" id="edFile" accept="image/*,.heic,.heif" hidden>
+    <span>Chọn 1 ảnh để chỉnh sửa</span>
+  </label>
+  <div class="editor">
+    <div class="editor-stage"><img id="edImg" alt=""></div>
+    <div class="editor-side">
+      <div class="group">
+        <div class="glabel">Tỉ lệ khung</div>
+        <div class="chips" id="edRatios">
+          <button data-r="NaN" class="active">Tự do</button>
+          <button data-r="0.5625">9:16 TikTok</button>
+          <button data-r="1">1:1</button>
+          <button data-r="0.8">4:5</button>
+          <button data-r="1.7778">16:9</button>
+          <button data-r="1.3333">4:3</button>
+          <button data-r="0.75">3:4</button>
+          <button data-r="1.5">3:2</button>
+        </div>
+      </div>
+      <div class="group">
+        <div class="glabel">Xoay / lật</div>
+        <div class="chips">
+          <button data-act="rotL">⟲ 90°</button>
+          <button data-act="rotR">⟳ 90°</button>
+          <button data-act="flipH">⇋ Lật ngang</button>
+          <button data-act="flipV">⇵ Lật dọc</button>
+          <button data-act="reset">Đặt lại</button>
+        </div>
+      </div>
+      <div class="group">
+        <div class="glabel">Kích thước vùng cắt: <span id="edCropInfo">–</span></div>
+        <div class="row tight">
+          <label>Rộng <input type="number" id="edW" min="1"></label>
+          <label>Cao <input type="number" id="edH" min="1"></label>
+        </div>
+        <label class="check"><input type="checkbox" id="edLock" checked> Giữ tỉ lệ khi resize</label>
+        <div class="chips" id="edPresets">
+          <button data-wh="1080x1920">1080×1920</button>
+          <button data-wh="1080x1080">1080×1080</button>
+          <button data-wh="1080x1350">1080×1350</button>
+          <button data-wh="1920x1080">1920×1080</button>
+        </div>
+      </div>
+      <div class="group row tight">
+        <label>Định dạng <select id="edFormat"></select></label>
+        <label>Chất lượng <input type="number" id="edQ" value="92" min="10" max="100"></label>
+      </div>
+      <button class="primary" id="edExport" disabled>Xuất &amp; tải ảnh</button>
+      <div id="edOut" class="hint"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ IMAGE + AUDIO -> VIDEO ============ -->
+<section class="panel" id="tab-imgvideo">
+  <h2>Ảnh + Audio → Video</h2>
+  <p class="hint">Chọn 1 hoặc nhiều ảnh (slideshow) và 1 file audio. Mặc định khung dọc 9:16 (1080×1920) chuẩn TikTok / Reels / Shorts.</p>
+  <div class="split">
+    <div class="controls">
+      <label class="drop small" data-input="ivImages">
+        <input type="file" id="ivImages" accept="image/*,.heic,.heif" multiple hidden>
+        <span>🖼️ Chọn ảnh (nhiều ảnh = slideshow)</span>
+      </label>
+      <div class="thumbs" id="ivThumbs"></div>
+      <label class="drop small" data-input="ivAudio">
+        <input type="file" id="ivAudio" accept="audio/*,video/*" hidden>
+        <span>🎵 Chọn audio (mp3, m4a, wav, ogg…)</span>
+      </label>
+      <div class="hint" id="ivAudioInfo"></div>
+      <div class="row tight">
+        <label>Khung hình <select id="ivSize" class="size-select"></select></label>
+        <label>FPS <select id="ivFps"><option>24</option><option selected>30</option><option>60</option></select></label>
+      </div>
+      <div class="row tight">
+        <label>Cách đặt ảnh
+          <select id="ivFit">
+            <option value="blur">Vừa khung + nền mờ</option>
+            <option value="cover">Phủ kín (cắt bớt)</option>
+            <option value="contain">Vừa khung + nền màu</option>
+          </select>
+        </label>
+        <label>Màu nền <input type="color" id="ivBg" value="#000000"></label>
+      </div>
+      <div class="row tight">
+        <label>Hiệu ứng
+          <select id="ivFx">
+            <option value="kenburns">Zoom chậm (Ken Burns)</option>
+            <option value="none">Tĩnh</option>
+          </select>
+        </label>
+        <label>Chuyển cảnh
+          <select id="ivTrans"><option value="fade">Mờ dần</option><option value="none">Cắt thẳng</option></select>
+        </label>
+      </div>
+      <div class="row tight">
+        <label>Bắt đầu audio từ (s) <input type="number" id="ivStart" value="0" min="0" step="0.1"></label>
+        <label>Thời lượng (s, trống = hết bài) <input type="number" id="ivDur" min="0.5" step="0.1"></label>
+      </div>
+      <label class="check"><input type="checkbox" id="ivProgress"> Thanh tiến trình ở đáy video</label>
+      <div class="row">
+        <button id="ivPlay">▶ Xem thử</button>
+        <button class="primary" id="ivRender">Xuất video</button>
+      </div>
+      <div class="progress" id="ivProg" hidden><div></div><span></span></div>
+      <div id="ivOut"></div>
+    </div>
+    <div class="preview"><canvas id="ivCanvas"></canvas></div>
+  </div>
+</section>
+
+<!-- ============ TEXT + AUDIO -> VIDEO ============ -->
+<section class="panel" id="tab-textvideo">
+  <h2>Text (template TikTok) + Audio → Video / Ảnh</h2>
+  <p class="hint">Mỗi đoạn cách nhau bởi <b>một dòng trống</b> là một slide. Thời lượng audio được chia đều cho các slide (hoặc đặt số giây riêng).</p>
+  <div class="split">
+    <div class="controls">
+      <label>Nội dung
+        <textarea id="tvText" rows="7">Bạn có biết? 🤔
+
+Mỗi ngày chỉ cần đọc 10 trang sách, một năm bạn đọc được hơn 15 cuốn.
+
+Bắt đầu từ hôm nay nhé! 📚</textarea>
+      </label>
+      <div class="glabel">Template</div>
+      <div class="templates" id="tvTemplates"></div>
+      <div class="row tight">
+        <label>Font
+          <select id="tvFont">
+            <option value="">Theo template</option>
+            <option>Be Vietnam Pro</option>
+            <option>Montserrat</option>
+            <option>Playfair Display</option>
+            <option>Lobster</option>
+            <option>Roboto Mono</option>
+          </select>
+        </label>
+        <label>Cỡ chữ tối đa <input type="number" id="tvSize" value="96" min="20" max="240"></label>
+      </div>
+      <div class="row tight">
+        <label>Căn lề
+          <select id="tvAlign"><option value="">Theo template</option><option value="center">Giữa</option><option value="left">Trái</option></select>
+        </label>
+        <label>Hiệu ứng chữ
+          <select id="tvAnim">
+            <option value="pop">Bật lên</option>
+            <option value="fade">Mờ dần</option>
+            <option value="slide">Trượt lên</option>
+            <option value="type">Gõ chữ</option>
+            <option value="word">Từng từ</option>
+            <option value="none">Không</option>
+          </select>
+        </label>
+      </div>
+      <div class="row tight">
+        <label>Nền tuỳ chỉnh
+          <select id="tvBgMode"><option value="tpl">Theo template</option><option value="color">Màu</option><option value="image">Ảnh</option></select>
+        </label>
+        <label>Màu <input type="color" id="tvBgColor" value="#111111"></label>
+      </div>
+      <label class="drop small" data-input="tvBgImg" id="tvBgImgWrap" hidden>
+        <input type="file" id="tvBgImg" accept="image/*,.heic,.heif" hidden>
+        <span>Chọn ảnh nền</span>
+      </label>
+      <div class="row tight">
+        <label>Tên / handle (góc dưới) <input type="text" id="tvHandle" placeholder="@yourname"></label>
+        <label>Khung hình <select id="tvSizeSel" class="size-select"></select></label>
+      </div>
+      <label class="drop small" data-input="tvAudio">
+        <input type="file" id="tvAudio" accept="audio/*,video/*" hidden>
+        <span>🎵 Chọn audio (không bắt buộc)</span>
+      </label>
+      <div class="hint" id="tvAudioInfo"></div>
+      <div class="row tight">
+        <label>Giây mỗi slide (khi không có audio / ghi đè) <input type="number" id="tvSlideDur" min="0.5" step="0.5" placeholder="tự động"></label>
+        <label>FPS <select id="tvFps"><option>24</option><option selected>30</option><option>60</option></select></label>
+      </div>
+      <label class="check"><input type="checkbox" id="tvProgress" checked> Thanh tiến trình ở đáy video</label>
+      <div class="row">
+        <button id="tvPlay">▶ Xem thử</button>
+        <button id="tvPng">Tải ảnh slide hiện tại</button>
+        <button id="tvZip">Tải tất cả slide (.zip)</button>
+        <button class="primary" id="tvRender">Xuất video</button>
+      </div>
+      <label>Xem slide <input type="range" id="tvScrub" min="0" max="0" value="0"></label>
+      <div class="progress" id="tvProg" hidden><div></div><span></span></div>
+      <div id="tvOut"></div>
+    </div>
+    <div class="preview"><canvas id="tvCanvas"></canvas></div>
+  </div>
+</section>
+</main>
+
+<footer class="foot">
+  Mọi xử lý diễn ra trên máy bạn. Video xuất MP4 (H.264) qua WebCodecs trên Chrome/Edge/Safari mới; trình duyệt cũ sẽ ghi thời gian thực ra WebM.
+  <span id="caps"></span>
+</footer>
+
+<div id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pako/1.0.11/pako.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/upng-js@2.1.0/UPNG.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mp4-muxer@5.1.3/build/mp4-muxer.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js" defer></script>
+<script src="js/common.js"></script>
+<script src="js/convert.js"></script>
+<script src="js/compress.js"></script>
+<script src="js/editor.js"></script>
+<script src="js/video-engine.js"></script>
+<script src="js/image-video.js"></script>
+<script src="js/text-video.js"></script>
+</body>
+</html>
