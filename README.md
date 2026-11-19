@@ -24,6 +24,10 @@ iOS hay làm mờ (không cho chọn) file m4a/mp3 trong app **Tệp** khi ô ch
 - **Âm thanh luôn là AAC**: dùng bộ mã hoá AAC của trình duyệt nếu có; nếu không (Chrome/Firefox trên Linux, một số Safari) thì tự tải bộ mã hoá AAC WASM ([@mediabunny/aac-encoder](https://www.npmjs.com/package/@mediabunny/aac-encoder)). Không dùng Opus vì Opus trong MP4 bị **mất tiếng** trên Ảnh của iPhone, QuickTime, Windows Films & TV và một số trình upload.
 - **Dự phòng** (chỉ khi trình duyệt không có H.264): `canvas.captureStream` + `MediaRecorder` ghi theo thời gian thực. Cần giữ màn hình mở trong khi ghi.
 
+- **Âm thanh được đưa vào từng giây một** (không tạo bản sao cả bài trong bộ nhớ) và **fade-out 0,4 s như nhau** ở cả xuất nhanh lẫn ghi thời gian thực.
+- Dưới nút xuất có **ước tính dung lượng + thời gian** (thời gian đo từ lần xuất trước trên chính máy đó, lưu trong `localStorage`).
+- Khi lỗi: hộp thông báo dễ hiểu + **Thử lại** + **📋 Sao chép thông tin lỗi** (thiết bị, khả năng mã hoá, 20 lỗi gần nhất của trang). Thông tin chỉ được sao chép, không gửi đi đâu. Trang `#selftest` có nút **Sao chép kết quả**.
+
 Trên điện thoại, nút **Chia sẻ / Lưu vào Ảnh** mở share sheet để lưu video vào thư viện hoặc gửi thẳng sang TikTok.
 
 ## Chạy local
@@ -47,10 +51,14 @@ npm test                    # cả hai
 - E2E (`tests/e2e/`): tải file mẫu thật (`tests/fixtures/`: m4a, mp3, wav, flac, ogg, mp4, ảnh có EXIF), xuất ảnh/video rồi kiểm tra file tải về bằng `ffprobe` (codec H.264 + AAC, kích thước, thời lượng, và **độ lớn tiếng** bằng `volumedetect` để bắt lỗi video câm). Cần Google Chrome và ffprobe.
 - WebKit trên Linux không cần sudo: `tests/setup-webkit-linux.sh`. Bản WebKit này của Playwright **không có AAC/H.264**, nên các test m4a/xuất video tự bỏ qua trên project iPhone (có ghi lý do) — iPhone thật thì có. Để chắc chắn trên máy thật, mở `#selftest` trên iPhone/Android.
 - Tạo lại file mẫu: `npm run fixtures` (cần ffmpeg).
+- **Sau khi sửa `js/` hoặc `assets/`: chạy `npm run stamp`** — thêm `?v=<hash nội dung>` vào `index.html` để người dùng cũ không chạy JS cũ (cache). Unit test sẽ báo lỗi nếu quên.
+- **CI** (`.github/workflows/ci.yml`): mỗi lần push / pull request chạy unit + e2e trên 3 trình duyệt, kèm báo cáo Playwright.
 
 ## Deploy GitHub Pages
 
 Settings → Pages → Source: *Deploy from a branch* → `main` / `(root)`. File `.nojekyll` đã có sẵn.
+
+**Chỉ deploy khi test xanh (khuyến nghị):** Settings → Pages → Source: *GitHub Actions*, rồi Settings → Secrets and variables → Actions → Variables → thêm `PAGES_VIA_ACTIONS` = `true`. Từ đó `main` chỉ được đưa lên Pages khi CI pass.
 
 ## Thư viện (CDN)
 

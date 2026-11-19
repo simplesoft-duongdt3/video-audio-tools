@@ -359,7 +359,55 @@
     return Math.sqrt(s / Math.max(1, samples.length));
   }
 
+  /* ---------------- export helpers ---------------- */
+  /**
+   * Where the sound of a clip ends and how long its fade-out is (same rule on every export path).
+   * srcDur = whole audio length, offset = clip start in it, duration = video length (seconds).
+   */
+  function audioFade(srcDur, offset, duration) {
+    const end = Math.max(0.05, Math.min(duration, srcDur - offset));
+    return { end, fade: Math.min(0.4, end / 4) };
+  }
+  /** Gain (0..1) at clip time t for a fade-out ending at `end`. */
+  const fadeGain = (t, end, fade) => (t >= end ? 0 : t <= end - fade ? 1 : (end - t) / fade);
+
+  /**
+   * What the user will get before pressing "export".
+   * speed = frames encoded per second measured on this device (0 = unknown), realtime = no fast encoder.
+   * → { bytes, seconds (null = unknown), capped (bitrate lowered to fit maxBytes) }
+   */
+  function exportEstimate({ w, h, fps, duration, audio = true, maxBytes = 0, speed = 0, realtime = false }) {
+    const full = bitrateFor(w, h, fps);
+    const bps = bitrateFor(w, h, fps, duration, maxBytes);
+    const frames = Math.max(1, Math.round(duration * fps));
+    return {
+      bytes: estimateBytes(bps, duration, audio),
+      seconds: realtime ? duration : speed > 0 ? Math.max(1, Math.round(frames / speed)) : null,
+      capped: bps < full,
+    };
+  }
+
+  /**
+   * Turns a raw browser error into a short Vietnamese explanation + what to do.
+   * → { title, hint }
+   */
+  function friendlyError(message = '', name = '') {
+    const m = String(message) + ' ' + String(name);
+    if (/memory|allocation|RangeError|QuotaExceeded|Array buffer/i.test(m))
+      return { title: 'Thiết bị hết bộ nhớ khi xuất video', hint: 'Thử chọn khung 720×1280, giảm “Thời lượng”, đóng bớt tab khác, hoặc xuất trên máy tính.' };
+    if (/import|dynamically imported|Failed to fetch|NetworkError|Load failed|network/i.test(m))
+      return { title: 'Không tải được thư viện xuất video', hint: 'Kiểm tra kết nối mạng rồi bấm “Thử lại”.' };
+    if (/NotSupported|not supported|codec|encoder|configure/i.test(m))
+      return { title: 'Trình duyệt không mã hoá được video với cài đặt này', hint: 'Thử khung 720×1280 hoặc 30 fps, hoặc dùng Chrome / Safari bản mới.' };
+    if (/rời khỏi trang|hidden/i.test(m))
+      return { title: 'Đã dừng vì trang bị ẩn', hint: 'Giữ màn hình mở và ở lại trang này đến khi xuất xong.' };
+    if (/decode|giải mã|EncodingError/i.test(m))
+      return { title: 'Không đọc được file audio', hint: 'Thử đổi file sang MP3 / M4A / WAV.' };
+    return { title: 'Xuất video bị lỗi', hint: 'Bấm “Thử lại”. Nếu vẫn lỗi, bấm “Sao chép thông tin lỗi” và gửi cho chúng tôi.' };
+  }
+
   return {
+    audioFade, fadeGain, exportEstimate, friendlyError,
     formatBytes, formatTime, baseName, detectPlatform,
     isHeic, isHeicBrand, looksLikeAudio, AUDIO_EXT, fitArea,
     exifOrientation, orientationApp1, stripJpegBytes,

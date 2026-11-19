@@ -170,6 +170,8 @@ test.describe('audio → video', () => {
     await page.click('#avRender');
     await expect(page.locator('#avRender')).toHaveText('Xuất video MP4');
     await expect(page.locator('#avOut video')).toHaveCount(0);
+    await expect(page.locator('#toast')).toContainText('Đã huỷ');
+    await expect(page.locator('#avOut .errbox'), 'cancel is not an error').toHaveCount(0);
   });
 
   test('play preview starts and stops', async ({ page }) => {

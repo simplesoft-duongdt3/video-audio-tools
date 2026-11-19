@@ -95,6 +95,7 @@
   let bgImage = null;
   const canvas = $('tvCanvas');
   const player = new VideoEngine.Player(canvas);
+  let rw = null; // export button (estimate line)
   const layoutCache = new Map();
 
   /* ---------------- layout ---------------- */
@@ -411,6 +412,7 @@
       audioName = baseName(f.name);
       audioFile = f.name;
       updateAudioInfo();
+      if (rw) rw.refresh();
     } catch (e) {
       audio = null;
       $('tvAudioInfo').textContent = e.message;
@@ -452,8 +454,13 @@
     await zipAndDownload(items, 'text-slides.zip');
   };
 
-  wireRender({
+  rw = wireRender({
     btn: $('tvRender'),
+    peek: () => {
+      if (!slides().length) return null;
+      const size = getSize($('tvSizeSel'));
+      return { width: size.w, height: size.h, fps: +$('tvFps').value, duration: timing().duration, audio: !!audio };
+    },
     prog: $('tvProg'),
     out: $('tvOut'),
     fileName: () => (audioName || 'text') + '-tiktok',

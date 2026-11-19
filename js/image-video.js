@@ -4,6 +4,7 @@
   let audio = null, audioName = '';
   const canvas = $('ivCanvas');
   const player = new VideoEngine.Player(canvas);
+  let rw = null; // export button (estimate line)
 
   function settings() {
     const size = getSize($('ivSize'));
@@ -106,6 +107,7 @@
     canvas.width = sc.width;
     canvas.height = sc.height;
     sc.draw(canvas.getContext('2d'), Math.min(0.01, sc.duration));
+    if (rw) rw.refresh();
   }
 
   function renderThumbs() {
@@ -158,8 +160,13 @@
     player.play(sc, (t) => { if (t < 0) $('ivPlay').textContent = '▶ Xem thử'; });
   };
 
-  wireRender({
+  rw = wireRender({
     btn: $('ivRender'),
+    peek: () => {
+      if (!images.length) return null;
+      const s = settings();
+      return { width: s.W, height: s.H, fps: s.fps, duration: s.duration, audio: !!audio };
+    },
     prog: $('ivProg'),
     out: $('ivOut'),
     fileName: () => (audioName || 'slideshow') + '-video',

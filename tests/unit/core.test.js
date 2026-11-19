@@ -254,3 +254,49 @@ test('peaks, smoothBars and rms', () => {
   assert.ok(Math.abs(C.rms(sine) - 0.5 / Math.SQRT2) < 1e-3);
   assert.equal(C.rms(new Float32Array(0)), 0);
 });
+
+test('audioFade: fade ends where the sound ends, never longer than 0.4 s', () => {
+  assert.deepEqual(C.audioFade(100, 10, 30), { end: 30, fade: 0.4 });
+  // audio runs out before the video: fade at the audio end
+  const f = C.audioFade(20, 15, 30);
+  assert.equal(f.end, 5); assert.equal(f.fade, 0.4);
+  // very short clip: fade is a quarter of it
+  assert.equal(C.audioFade(1, 0, 1).fade, 0.25);
+  // start past the end: still a valid (tiny) window, no NaN / negative
+  const g = C.audioFade(10, 12, 5);
+  assert.ok(g.end > 0 && g.fade > 0 && g.fade <= g.end);
+});
+
+test('fadeGain: 1 before the fade, linear ramp, 0 after the end', () => {
+  assert.equal(C.fadeGain(0, 10, 0.4), 1);
+  assert.equal(C.fadeGain(9.6, 10, 0.4), 1);
+  assert.ok(Math.abs(C.fadeGain(9.8, 10, 0.4) - 0.5) < 1e-9);
+  assert.equal(C.fadeGain(10, 10, 0.4), 0);
+  assert.equal(C.fadeGain(11, 10, 0.4), 0);
+});
+
+test('exportEstimate: size matches bitrate × time, iOS cap is flagged, time from measured speed', () => {
+  const base = { w: 1080, h: 1920, fps: 30, duration: 60 };
+  const e = C.exportEstimate(base);
+  const bps = C.bitrateFor(1080, 1920, 30);
+  assert.equal(e.bytes, C.estimateBytes(bps, 60, true));
+  assert.equal(e.seconds, null, 'unknown speed → no made-up time');
+  assert.equal(e.capped, false);
+  // 3 minutes on iPhone (80 MB cap) at full quality would be ~98 MB → capped below 80 MB
+  const ios = C.exportEstimate({ ...base, duration: 180, maxBytes: 80e6 });
+  assert.equal(ios.capped, true);
+  assert.ok(ios.bytes <= 80e6, `${ios.bytes} ≤ 80 MB`);
+  assert.equal(C.exportEstimate({ ...base, speed: 180 }).seconds, 10, '1800 frames at 180 fps');
+  assert.equal(C.exportEstimate({ ...base, realtime: true }).seconds, 60, 'real-time recording takes the video length');
+  assert.ok(C.exportEstimate({ ...base, audio: false }).bytes < e.bytes);
+});
+
+test('friendlyError: common browser failures map to an actionable Vietnamese message', () => {
+  assert.match(C.friendlyError('Array buffer allocation failed', 'RangeError').title, /bộ nhớ/);
+  assert.match(C.friendlyError('Failed to fetch dynamically imported module: https://cdn…').title, /thư viện/);
+  assert.match(C.friendlyError('Unsupported configuration', 'NotSupportedError').title, /mã hoá/);
+  assert.match(C.friendlyError('Đã dừng vì bạn rời khỏi trang.').title, /trang bị ẩn/);
+  const other = C.friendlyError('weird');
+  assert.match(other.hint, /Sao chép thông tin lỗi/);
+  for (const m of ['', undefined]) assert.ok(C.friendlyError(m).title);
+});

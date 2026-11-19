@@ -191,6 +191,48 @@ function errorCard(container, name, err) {
   container.appendChild(card);
 }
 
+/* ---------- debug log (for "Sao chép thông tin lỗi") ---------- */
+/** Last 40 warnings/errors of this page, kept in memory only (never sent anywhere). */
+const DebugLog = (() => {
+  const items = [];
+  const str = (a) => (a instanceof Error ? `${a.name}: ${a.message}` : typeof a === 'object' ? (() => { try { return JSON.stringify(a); } catch (_) { return String(a); } })() : String(a));
+  const push = (lvl, args) => {
+    items.push(`${new Date().toISOString().slice(11, 19)} ${lvl} ${args.map(str).join(' ')}`.slice(0, 400));
+    if (items.length > 40) items.shift();
+  };
+  ['error', 'warn'].forEach((l) => {
+    const orig = console[l].bind(console);
+    console[l] = (...a) => { push(l, a); orig(...a); };
+  });
+  window.addEventListener('error', (e) => push('error', [`${e.message} @${(e.filename || '').split('/').pop()}:${e.lineno}`]));
+  window.addEventListener('unhandledrejection', (e) => push('error', ['unhandled: ' + str(e.reason)]));
+  return { items, push };
+})();
+
+/** Copy text to the clipboard; if the browser refuses, show it in a box to copy by hand. → true if copied */
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); return true; } catch (_) {}
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.setAttribute('readonly', '');
+  ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
+  document.body.appendChild(ta);
+  ta.select();
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch (_) {}
+  ta.remove();
+  if (ok) return true;
+  const d = document.createElement('dialog');
+  d.className = 'copybox';
+  d.innerHTML = '<p>Trình duyệt không cho tự sao chép. Hãy chọn hết đoạn dưới đây và sao chép:</p><textarea readonly rows="12"></textarea><div class="row"><button class="primary">Đóng</button></div>';
+  d.querySelector('textarea').value = text;
+  d.querySelector('button').onclick = () => { d.close(); d.remove(); };
+  document.body.appendChild(d);
+  if (d.showModal) d.showModal(); else d.setAttribute('open', '');
+  d.querySelector('textarea').select();
+  return false;
+}
+
 /* ---------- file inputs + drag & drop ---------- */
 function onFiles(inputId, cb) {
   const input = $(inputId);

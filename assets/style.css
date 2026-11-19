@@ -146,3 +146,11 @@ table.selftest { width: 100%; border-collapse: collapse; margin-top: 12px; font-
 table.selftest td { padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
 table.selftest td:first-child { width: 28px; }
 table.selftest td:last-child { color: var(--muted); word-break: break-word; }
+
+/* export estimate + error recovery */
+.hint.estimate { margin-top: 6px; }
+.errbox { background: var(--panel2); border: 1px solid #ff7a7a; border-radius: 10px; padding: 12px; margin-top: 10px; }
+.errbox b { color: #ff9a9a; }
+.hint.mono { font-family: ui-monospace, Menlo, monospace; font-size: 0.78rem; word-break: break-word; }
+dialog.copybox { background: var(--panel); color: inherit; border: 1px solid var(--line); border-radius: var(--radius); width: min(640px, 92vw); }
+dialog.copybox textarea { width: 100%; box-sizing: border-box; font-family: ui-monospace, Menlo, monospace; font-size: 0.78rem; }

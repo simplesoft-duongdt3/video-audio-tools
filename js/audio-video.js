@@ -6,6 +6,7 @@
   let blurCache = null;
   const canvas = $('avCanvas');
   const player = new VideoEngine.Player(canvas);
+  let rw = null; // export button (estimate line)
   const FFT = 2048;
 
   function opts() {
@@ -332,6 +333,7 @@
     // show a moment with sound rather than the silent first frame
     const t = audio ? Math.min(sc.duration * 0.3, 20) : 0;
     sc.draw(canvas.getContext('2d'), t);
+    if (rw) rw.refresh();
   }
 
   /* ---------------- events ---------------- */
@@ -345,7 +347,7 @@
       $('avAudioInfo').textContent = `🎵 ${f.name} — ${formatTime(buf.duration)} · ${buf.sampleRate} Hz · ${buf.numberOfChannels} kênh`;
       // A whole long track can need ~1 GB of RAM to export; phones (iOS especially) reload the tab instead.
       if (IS_MOBILE && buf.duration > 300) {
-        $('avAudioInfo').textContent += ' · ⚠️ Bài dài trên điện thoại có thể bị thiếu bộ nhớ khi xuất — nên đặt "Thời lượng" ≤ 180s hoặc xuất trên máy tính.';
+        $('avAudioInfo').textContent += ' · ⚠️ Bài dài trên điện thoại có thể làm trang bị tải lại vì thiếu bộ nhớ — nếu gặp, hãy cắt bài ngắn hơn hoặc xuất trên máy tính.';
       }
       await ensureFonts();
       preview();
@@ -383,8 +385,13 @@
     player.play(sc, (t) => { if (t < 0) { $('avPlay').textContent = '▶ Xem thử'; preview(); } });
   };
 
-  wireRender({
+  rw = wireRender({
     btn: $('avRender'),
+    peek: () => {
+      if (!audio) return null;
+      const o = opts();
+      return { width: o.W, height: o.H, fps: o.fps, duration: o.duration, audio: true };
+    },
     prog: $('avProg'),
     out: $('avOut'),
     fileName: () => (audioFile ? baseName(audioFile) : 'audio') + '-video',

@@ -33,15 +33,14 @@ const VideoEngine = (() => {
     try { return await navigator.wakeLock.request('screen'); } catch (_) { return null; }
   }
 
-  /** Trim/resample the source audio to 48 kHz stereo with a short fade-out. */
+  /** Fallback for unusual sources (>2 channels or odd sample rates): resample the clip at once (uses more memory). */
   async function prepareAudio(buffer, offset, duration) {
     const len = Math.max(1, Math.ceil(duration * SR));
     const oac = new OfflineCtx(2, len, SR);
     const src = oac.createBufferSource();
     src.buffer = buffer;
     const g = oac.createGain();
-    const end = Math.max(0.05, Math.min(duration, buffer.duration - offset)); // where the audio content ends
-    const fade = Math.min(0.4, end / 4);
+    const { end, fade } = Core.audioFade(buffer.duration, offset, duration);
     g.gain.setValueAtTime(1, Math.max(0, end - fade));
     g.gain.linearRampToValueAtTime(0, end);
     src.connect(g).connect(oac.destination);
@@ -49,7 +48,40 @@ const VideoEngine = (() => {
     return oac.startRendering();
   }
 
-  /** Copy [from, to) frames of an AudioBuffer into a new AudioBuffer (for feeding audio in step with video). */
+  /**
+   * The clip's sound as 1-second stereo AudioBuffers with the fade-out applied, produced one at a time.
+   * Common sources (44.1/48 kHz, mono/stereo) are copied straight from the decoded song: no second full-length
+   * copy is held in memory (a 10-minute song used to need ~230 MB more while exporting).
+   */
+  async function* audioChunks(buffer, offset, duration) {
+    const sr = buffer.sampleRate, nch = buffer.numberOfChannels;
+    if (!((sr === 44100 || sr === 48000) && nch <= 2)) {
+      const ab = await prepareAudio(buffer, offset, duration);
+      for (let pos = 0; pos < ab.length; pos += SR) yield sliceAudio(ab, pos, Math.min(ab.length, pos + SR));
+      return;
+    }
+    const total = Math.max(1, Math.ceil(duration * sr));
+    const first = Math.round(offset * sr);
+    const { end, fade } = Core.audioFade(buffer.duration, offset, duration);
+    const fadeFrom = Math.floor((end - fade) * sr);
+    const src = [buffer.getChannelData(0), buffer.getChannelData(nch - 1)];
+    const tmp = new Float32Array(sr);
+    for (let pos = 0; pos < total; pos += sr) {
+      const n = Math.min(sr, total - pos);
+      const out = new AudioBuffer({ length: n, numberOfChannels: 2, sampleRate: sr });
+      const buf = tmp.subarray(0, n);
+      for (let c = 0; c < 2; c++) {
+        buf.fill(0);
+        const a = Math.min(src[c].length, first + pos), b = Math.min(src[c].length, first + pos + n);
+        if (b > a) buf.set(src[c].subarray(a, b));
+        if (pos + n > fadeFrom) for (let i = Math.max(0, fadeFrom - pos); i < n; i++) buf[i] *= Core.fadeGain((pos + i) / sr, end, fade);
+        out.copyToChannel(buf, c);
+      }
+      yield out;
+    }
+  }
+
+  /** Copy [from, to) frames of an AudioBuffer into a new AudioBuffer. */
   function sliceAudio(ab, from, to) {
     const n = Math.max(1, to - from);
     const out = new AudioBuffer({ length: n, numberOfChannels: ab.numberOfChannels, sampleRate: ab.sampleRate });
@@ -118,21 +150,16 @@ const VideoEngine = (() => {
     const lock = await wakeLock();
     let done = false, framesDone = 0;
     try {
-      let ab = null;
-      if (audioSrc) {
-        onProgress(0, 'Đang xử lý audio…');
-        ab = await prepareAudio(scene.audio, scene.audioOffset || 0, duration);
-        if (aborted()) throw abortErr();
-      }
       await output.start();
 
       // Audio (WASM AAC can take a few seconds) is encoded IN PARALLEL with the video, in 1-second slices.
       let audioFailure = null;
       const audioJob = (async () => {
-        if (!ab) return;
-        for (let pos = 0; pos < ab.length && !aborted(); pos += SR) {
+        if (!audioSrc) return;
+        for await (const chunk of audioChunks(scene.audio, scene.audioOffset || 0, duration)) {
+          if (aborted()) return;
           const m = performance.now();
-          await audioSrc.add(sliceAudio(ab, pos, Math.min(ab.length, pos + SR)));
+          await audioSrc.add(chunk);
           timing.audio += performance.now() - m;
         }
       })().catch((e) => { audioFailure = e; });
@@ -164,6 +191,7 @@ const VideoEngine = (() => {
       await output.finalize();
       done = true;
       onProgress(1, 'Xong!');
+      rememberSpeed(total / Math.max(0.05, (performance.now() - t0) / 1000));
       return { blob: new Blob([output.target.buffer], { type: 'video/mp4' }), ext: 'mp4', audioCodec: audioSrc ? 'aac' : null, mode: 'fast' };
     } catch (e) {
       e.framesDone = framesDone;
@@ -201,12 +229,13 @@ const VideoEngine = (() => {
     if (!manual) { stream.getTracks().forEach((t) => t.stop()); stream = canvas.captureStream(fps); vtrack = stream.getVideoTracks()[0]; }
     const actx = audioCtx();
     await actx.resume();
-    let src = null;
+    let src = null, gain = null;
     if (scene.audio) {
       const dest = actx.createMediaStreamDestination();
       src = actx.createBufferSource();
       src.buffer = scene.audio;
-      src.connect(dest);
+      gain = actx.createGain(); // same fade-out as the fast path (it used to be missing here)
+      src.connect(gain).connect(dest);
       dest.stream.getAudioTracks().forEach((t) => stream.addTrack(t));
     }
     const mimeType = pickRecorderMime();
@@ -223,7 +252,12 @@ const VideoEngine = (() => {
 
     rec.start(1000);
     const start = actx.currentTime + 0.05;
-    if (src) src.start(start, scene.audioOffset || 0, duration);
+    if (src) {
+      const { end, fade } = Core.audioFade(scene.audio.duration, scene.audioOffset || 0, duration);
+      gain.gain.setValueAtTime(1, start + Math.max(0, end - fade));
+      gain.gain.linearRampToValueAtTime(0, start + end);
+      src.start(start, scene.audioOffset || 0, duration);
+    }
 
     try {
       // Driven by the audio clock. Each frame shows the picture for its exact slot (k / fps), so motion stays
@@ -260,6 +294,24 @@ const VideoEngine = (() => {
     const type = (rec.mimeType || mimeType || 'video/webm').split(';')[0];
     onProgress(1, 'Xong!');
     return { blob: new Blob(chunks, { type }), ext: type.includes('mp4') ? 'mp4' : 'webm', audioCodec: scene.audio ? 'recorder' : null, mode: 'realtime' };
+  }
+
+  /* ---------------- estimate before export ---------------- */
+  const SPEED_KEY = 'vat.exportFps';
+  let speedMem = 0;
+  function rememberSpeed(fps) {
+    speedMem = fps;
+    try { localStorage.setItem(SPEED_KEY, String(Math.round(fps))); } catch (_) {}
+  }
+  function knownSpeed() {
+    if (speedMem) return speedMem;
+    try { return +localStorage.getItem(SPEED_KEY) || 0; } catch (_) { return 0; }
+  }
+  let fastKnown = null; // null = not checked yet
+  capabilities().then((c) => { fastKnown = c.webcodecs; }).catch(() => { fastKnown = false; });
+  /** {width,height,fps,duration,audio} → { bytes, seconds|null, capped } for this device. */
+  function estimate({ width, height, fps, duration, audio = true }) {
+    return Core.exportEstimate({ w: width, h: height, fps, duration, audio, maxBytes: maxBytes(), speed: knownSpeed(), realtime: fastKnown === false });
   }
 
   let lastFallbackReason = null;
@@ -358,7 +410,7 @@ const VideoEngine = (() => {
     container.appendChild(box);
   }
 
-  return { render, Player, showOutput, capabilities, loadMediabunny, get lastFallbackReason() { return lastFallbackReason; }, tuning, timing };
+  return { render, estimate, Player, showOutput, capabilities, loadMediabunny, get lastFallbackReason() { return lastFallbackReason; }, tuning, timing };
 })();
 
 VideoEngine.capabilities().then((c) => {
@@ -367,10 +419,52 @@ VideoEngine.capabilities().then((c) => {
     : ` · ⚠️ Trình duyệt này: ghi thời gian thực (chậm, có thể giật) — lý do: ${c.reason}.`;
 });
 
-/** Wires a "render video" button with progress + cancel. */
-function wireRender({ btn, prog, out, buildScene, fileName }) {
+/** One-line "what you'll get" under the export button. */
+function estimateText(e) {
+  if (!e) return '';
+  let t = `Ước tính: ~${formatBytes(e.bytes)}`;
+  t += e.seconds != null ? ` · xuất ~${formatTime(e.seconds)}` : ' · thời gian xuất sẽ được đo ở lần đầu';
+  if (e.capped) t += ' · đã giảm chất lượng để file < 80 MB (giới hạn lưu của iPhone)';
+  return t;
+}
+
+/** Error box with a plain-language reason, "Thử lại" and "Sao chép thông tin lỗi". */
+function showError(out, err, retry) {
+  const f = Core.friendlyError(err && err.message, err && err.name);
+  out.innerHTML = `<div class="errbox" role="alert"><b></b><p class="hint"></p><p class="hint mono"></p>
+    <div class="row"><button class="primary" data-a="retry">Thử lại</button><button data-a="copy">📋 Sao chép thông tin lỗi</button></div></div>`;
+  out.querySelector('b').textContent = '⚠️ ' + f.title;
+  out.querySelectorAll('.hint')[0].textContent = f.hint;
+  out.querySelectorAll('.hint')[1].textContent = 'Chi tiết: ' + ((err && err.message) || String(err));
+  out.querySelector('[data-a=retry]').onclick = retry;
+  out.querySelector('[data-a=copy]').onclick = () => DebugInfo.copy({ error: err });
+}
+
+/**
+ * Wires a "render video" button with progress, cancel, estimate and error recovery.
+ * peek() → {width,height,fps,duration,audio} cheaply (no heavy work), or null. Returns { refresh } for the estimate line.
+ */
+function wireRender({ btn, prog, out, buildScene, fileName, peek }) {
   let ctrl = null;
   const label = btn.textContent;
+  let est = null;
+  if (peek) {
+    est = document.createElement('div');
+    est.className = 'hint estimate';
+    est.dataset.role = 'estimate';
+    btn.closest('.row, div').after(est);
+  }
+  const refresh = () => {
+    if (!est) return;
+    let p = null;
+    try { p = peek(); } catch (_) {}
+    est.textContent = p && p.duration > 0 ? estimateText(VideoEngine.estimate(p)) : '';
+  };
+  if (est) {
+    const panel = btn.closest('.panel');
+    ['input', 'change'].forEach((ev) => panel.addEventListener(ev, () => setTimeout(refresh, 0)));
+    refresh();
+  }
   btn.onclick = async () => {
     if (ctrl) { ctrl.abort(); return; }
     audioCtx().resume(); // must happen inside the tap on iOS
@@ -383,16 +477,19 @@ function wireRender({ btn, prog, out, buildScene, fileName }) {
     try {
       const { blob, ext, mode, fallbackReason } = await VideoEngine.render(scene, (f, txt) => setProgress(prog, f, txt), ctrl.signal);
       let note = '';
-      if (mode === 'realtime') note = `⚠️ Video được ghi theo thời gian thực (chậm và có thể bị giật khi đăng TikTok) vì ${fallbackReason || 'trình duyệt không hỗ trợ xuất nhanh'}. Nên dùng Chrome/Edge/Safari bản mới, hoặc mở “🩺 Tự kiểm tra thiết bị” ở chân trang và gửi kết quả.`;
+      if (mode === 'realtime') note = `⚠️ Video được ghi theo thời gian thực (chậm và có thể bị giật khi đăng TikTok) vì ${fallbackReason || 'trình duyệt không hỗ trợ xuất nhanh'}. Nên dùng Chrome/Edge/Safari bản mới, hoặc mở “🩺 Tự kiểm tra thiết bị” ở chân trang và bấm “Sao chép kết quả” để gửi cho chúng tôi.`;
       if (ext === 'webm') note = '⚠️ File WebM: TikTok/iPhone có thể không nhận. Nên xuất bằng Chrome/Edge/Safari mới để có MP4.';
       VideoEngine.showOutput(out, blob, `${fileName()}.${ext}`, note);
       toast('Đã tạo video!');
     } catch (e) {
-      if (e.name !== 'AbortError') { console.error(e); toast('Lỗi: ' + e.message, 5000); }
       prog.hidden = true;
+      if (e.name === 'AbortError') toast('Đã huỷ');
+      else { console.error(e); showError(out, e, () => btn.click()); }
     } finally {
       ctrl = null;
       btn.textContent = label;
+      refresh(); // speed is now measured on this device
     }
   };
+  return { refresh };
 }

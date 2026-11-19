@@ -161,12 +161,46 @@ const SelfTest = (() => {
   return { run, results, makeWav };
 })();
 
+/** Plain-text report of this device + recent errors, for users to paste into a message. Nothing is uploaded. */
+const DebugInfo = (() => {
+  const ICON = { pass: '✅', fail: '❌', run: '⏳' };
+  async function report({ error } = {}) {
+    const p = Core.detectPlatform(navigator.userAgent, navigator.platform, navigator.maxTouchPoints);
+    let caps = {};
+    try { caps = await VideoEngine.capabilities(); } catch (e) { caps = { error: e.message }; }
+    const ver = (document.querySelector('script[src*="video-engine"]') || {}).src || '';
+    const lines = [
+      '— Video & Audio Tools: thông tin lỗi —',
+      'Thời gian: ' + new Date().toISOString(),
+      'Trang: ' + location.href.split('#')[0] + ' · bản ' + ((ver.match(/v=([\w]+)/) || [])[1] || '?'),
+      `Thiết bị: ${p.ios ? 'iOS' : p.android ? 'Android' : 'Desktop'} · ${navigator.userAgent}`,
+      `Màn hình: ${screen.width}×${screen.height} @${devicePixelRatio} · RAM: ${navigator.deviceMemory || '?'} GB · CPU: ${navigator.hardwareConcurrency || '?'}`,
+      `Xuất nhanh: ${caps.webcodecs ? 'có' : 'không'}${caps.reason ? ' (' + caps.reason + ')' : ''} · AAC: ${caps.aac || '?'}`,
+      'Lần chuyển sang ghi thời gian thực gần nhất: ' + (VideoEngine.lastFallbackReason || 'không có'),
+    ];
+    if (error) lines.push('Lỗi: ' + (error.name || 'Error') + ': ' + (error.message || String(error)));
+    if (SelfTest.results.length) {
+      lines.push('', 'Tự kiểm tra:');
+      for (const r of SelfTest.results) lines.push(`${r.status === 'fail' && r.level !== 'required' ? '⚠️' : ICON[r.status]} ${r.name}: ${r.detail || ''}`);
+    }
+    if (DebugLog.items.length) lines.push('', 'Nhật ký gần nhất:', ...DebugLog.items.slice(-20));
+    return lines.join('\n');
+  }
+  async function copy(extra) {
+    const text = await report(extra);
+    if (await copyText(text)) toast('Đã sao chép — hãy dán vào tin nhắn gửi cho chúng tôi', 4000);
+    return text;
+  }
+  return { report, copy };
+})();
+
 (() => {
   const open = () => {
     document.querySelectorAll('#tabs button').forEach((x) => x.classList.remove('active'));
     document.querySelectorAll('.panel').forEach((p) => p.classList.toggle('active', p.id === 'tab-selftest'));
   };
   $('stRun').onclick = () => SelfTest.run($('stOut'));
+  $('stCopy').onclick = () => DebugInfo.copy();
   $('stLink').onclick = (e) => { e.preventDefault(); location.hash = 'selftest'; open(); SelfTest.run($('stOut')); };
   window.addEventListener('DOMContentLoaded', () => {
     if (location.hash === '#selftest') { open(); SelfTest.run($('stOut')); }

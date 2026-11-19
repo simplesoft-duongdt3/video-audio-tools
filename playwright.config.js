@@ -25,7 +25,7 @@ module.exports = defineConfig({
     reuseExistingServer: true,
     timeout: 20_000,
     stdout: 'ignore',
-    stderr: 'pipe',
+    stderr: 'ignore',
   },
   projects: [
     // Google Chrome (has H.264): the real export path used by most desktop users.

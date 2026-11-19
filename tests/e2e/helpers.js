@@ -57,6 +57,13 @@ function audioLevel(file) {
   return { max: num('max_volume'), mean: num('mean_volume') };
 }
 
+/** Mean level (dBFS) of [start, start+dur) seconds of the audio track. */
+function segmentLevel(file, start, dur) {
+  const r = spawnSync('ffmpeg', ['-hide_banner', '-ss', String(start), '-t', String(dur), '-i', file, '-vn', '-af', 'volumedetect', '-f', 'null', '-'], { encoding: 'utf8' });
+  const m = r.stderr.match(/mean_volume: (-?[0-9.]+|-inf) dB/);
+  return m ? (m[1] === '-inf' ? -Infinity : +m[1]) : -Infinity;
+}
+
 /** Image size via ffprobe. */
 function imageSize(file) {
   const p = probe(file);
@@ -109,4 +116,4 @@ async function codecs(page) {
 const NO_AAC = 'this browser build has no AAC decoder (Playwright Linux WebKit); real iPhone Safari has one';
 const NO_EXPORT = 'this browser build cannot encode video (no H.264 / MediaRecorder)';
 
-module.exports = { audioLevel, codecs, NO_AAC, NO_EXPORT, fx, probe, imageSize, hasFfprobe, openTab, grabDownload, renderAndDownload };
+module.exports = { segmentLevel, audioLevel, codecs, NO_AAC, NO_EXPORT, fx, probe, imageSize, hasFfprobe, openTab, grabDownload, renderAndDownload };

@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600;800&family=Montserrat:wght@700;900&family=Playfair+Display:ital,wght@0,700;1,700&family=Lobster&family=Roboto+Mono:wght@700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css">
-<link rel="stylesheet" href="assets/style.css">
+<link rel="stylesheet" href="assets/style.css?v=514d96d1fb">
 <!-- Mediabunny (MP4 + H.264/AAC encoding) is loaded on demand as an ES module; the AAC extension imports "mediabunny" too. -->
 <script type="importmap">{ "imports": { "mediabunny": "https://cdn.jsdelivr.net/npm/mediabunny@1.65.2/dist/bundles/mediabunny.min.mjs" } }</script>
 </head>
@@ -354,7 +354,10 @@ Bắt đầu từ hôm nay nhé! 📚</textarea>
 <section class="panel" id="tab-selftest">
   <h2>🩺 Tự kiểm tra thiết bị</h2>
   <p class="hint">Chạy thử thật các bước (giải mã audio, nén ảnh, xuất video…) trên trình duyệt này để biết tính năng nào dùng được. ❌ = lỗi bắt buộc, ⚠️ = chạy được nhưng hạn chế.</p>
-  <button class="primary" id="stRun">Chạy lại</button>
+  <div class="row">
+    <button class="primary" id="stRun">Chạy lại</button>
+    <button id="stCopy">📋 Sao chép kết quả</button>
+  </div>
   <div id="stOut"></div>
 </section>
 </main>
@@ -372,15 +375,15 @@ Bắt đầu từ hôm nay nhé! 📚</textarea>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/1.0.11/pako.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/upng-js@2.1.0/UPNG.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js" defer></script>
-<script src="js/core.js"></script>
-<script src="js/common.js"></script>
-<script src="js/convert.js"></script>
-<script src="js/compress.js"></script>
-<script src="js/editor.js"></script>
-<script src="js/video-engine.js"></script>
-<script src="js/image-video.js"></script>
-<script src="js/text-video.js"></script>
-<script src="js/audio-video.js"></script>
-<script src="js/selftest.js"></script>
+<script src="js/core.js?v=3c3e78dd3c"></script>
+<script src="js/common.js?v=4354e6ea69"></script>
+<script src="js/convert.js?v=a892107986"></script>
+<script src="js/compress.js?v=c9854c750d"></script>
+<script src="js/editor.js?v=5a58c6ba54"></script>
+<script src="js/video-engine.js?v=29eb28fb3a"></script>
+<script src="js/image-video.js?v=0390bea1c1"></script>
+<script src="js/text-video.js?v=2109bc9375"></script>
+<script src="js/audio-video.js?v=6308108b7d"></script>
+<script src="js/selftest.js?v=25867d8eb2"></script>
 </body>
 </html>

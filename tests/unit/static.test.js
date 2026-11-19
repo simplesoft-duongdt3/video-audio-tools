@@ -24,7 +24,7 @@ test('ids are unique', () => {
 });
 
 test('every local script exists, every js file is loaded, core.js loads before the others', () => {
-  const srcs = [...html.matchAll(/<script src="([^"]+)"/g)].map((m) => m[1]);
+  const srcs = [...html.matchAll(/<script src="([^"]+)"/g)].map((m) => m[1].split('?')[0]);
   const local = srcs.filter((s) => !/^https?:/.test(s));
   for (const s of local) assert.ok(existsSync(join(ROOT, s)), s);
   for (const f of jsFiles) assert.ok(local.includes('js/' + f), `js/${f} not loaded`);
@@ -58,4 +58,20 @@ test('audio pickers are marked data-audio (iOS accept workaround)', () => {
 test('GitHub Pages: .nojekyll present, no absolute local paths', () => {
   assert.ok(existsSync(join(ROOT, '.nojekyll')));
   assert.doesNotMatch(html, /(src|href)="\/(?!\/)/, 'root-relative paths break on project pages');
+});
+
+test('cache-busting: every local js/css carries ?v=<hash of its current content> (run `npm run stamp`)', async () => {
+  const { hashOf, ASSET_RE } = await import('../../scripts/stamp.mjs');
+  const tags = [...html.matchAll(/<(?:script|link)\b[^>]*\b(?:src|href)="((?:js|assets)\/[^"]+)"/g)].map((m) => m[1]);
+  assert.ok(tags.length >= 11, 'all local assets found');
+  const stale = tags.filter((t) => { const [path, q] = t.split('?v='); return q !== hashOf(path); });
+  assert.deepEqual(stale, [], 'index.html is stale: run `npm run stamp`');
+  assert.ok(ASSET_RE instanceof RegExp);
+});
+
+test('CI workflow runs unit + e2e tests and gates the Pages deploy on them', () => {
+  const wf = readFileSync(join(ROOT, '.github', 'workflows', 'ci.yml'), 'utf8');
+  assert.match(wf, /npm run test:unit/);
+  assert.match(wf, /playwright test/);
+  assert.match(wf, /needs:\s*\[?\s*test/);
 });
