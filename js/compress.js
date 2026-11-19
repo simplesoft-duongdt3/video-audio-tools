@@ -35,74 +35,9 @@
   }
 
   /* ---------- lossless JPEG: drop metadata segments, never touch the compressed image data ---------- */
-  function exifOrientation(b, seg) {
-    // seg points at FF E1; "Exif\0\0" at +4, TIFF header at +10
-    const t = seg + 10;
-    const le = b[t] === 0x49; // 'II'
-    const u16 = (o) => (le ? b[o] | (b[o + 1] << 8) : (b[o] << 8) | b[o + 1]);
-    const u32 = (o) => (le ? (b[o] | (b[o + 1] << 8) | (b[o + 2] << 16)) + b[o + 3] * 16777216 : b[o] * 16777216 + ((b[o + 1] << 16) | (b[o + 2] << 8) | b[o + 3]));
-    try {
-      const ifd = t + u32(t + 4);
-      const n = u16(ifd);
-      for (let i = 0; i < n; i++) {
-        const e = ifd + 2 + i * 12;
-        if (u16(e) === 0x0112) return u16(e + 8);
-      }
-    } catch (_) {}
-    return 1;
-  }
-
-  /** Minimal APP1 holding only the Orientation tag, so stripped photos still display upright. */
-  function orientationApp1(o) {
-    return new Uint8Array([
-      0xff, 0xe1, 0x00, 0x22,
-      0x45, 0x78, 0x69, 0x66, 0x00, 0x00, // "Exif\0\0"
-      0x4d, 0x4d, 0x00, 0x2a, 0x00, 0x00, 0x00, 0x08, // big-endian TIFF, IFD0 at 8
-      0x00, 0x01, // 1 entry
-      0x01, 0x12, 0x00, 0x03, 0x00, 0x00, 0x00, 0x01, 0x00, o, 0x00, 0x00, // Orientation = o
-      0x00, 0x00, 0x00, 0x00, // no next IFD
-    ]);
-  }
-
-  const startsWith = (b, at, str) => [...str].every((c, i) => b[at + i] === c.charCodeAt(0));
-
   async function stripJpeg(file) {
-    const b = new Uint8Array(await file.arrayBuffer());
-    if (b[0] !== 0xff || b[1] !== 0xd8) throw new Error('Không phải JPEG hợp lệ');
-    const parts = [b.subarray(0, 2)];
-    const removed = new Set();
-    let p = 2;
-    while (p < b.length) {
-      if (b[p] !== 0xff) throw new Error('JPEG lỗi cấu trúc');
-      while (b[p + 1] === 0xff) p++; // fill bytes
-      const m = b[p + 1];
-      if (m === 0xda) {
-        // Start of scan: keep everything up to the primary image's EOI (drops appended thumbnails / MPF extras).
-        let end = b.length;
-        for (let i = p + 2; i < b.length - 1; i++) if (b[i] === 0xff && b[i + 1] === 0xd9) { end = i + 2; break; }
-        parts.push(b.subarray(p, end));
-        if (end < b.length) removed.add('ảnh phụ đính kèm');
-        break;
-      }
-      if (m === 0xd8 || m === 0x01 || (m >= 0xd0 && m <= 0xd7)) { parts.push(b.subarray(p, p + 2)); p += 2; continue; }
-      const len = (b[p + 2] << 8) | b[p + 3];
-      const seg = b.subarray(p, p + 2 + len);
-      const isApp = m >= 0xe0 && m <= 0xef;
-      let keep = !isApp && m !== 0xfe; // tables, frame headers, restart interval… always kept
-      if (m === 0xe0) keep = true; // JFIF
-      if (m === 0xee) keep = true; // Adobe: needed to decode CMYK/YCCK colours correctly
-      if (m === 0xe2 && startsWith(b, p + 4, 'ICC_PROFILE')) keep = true; // colour profile (Display P3…)
-      if (m === 0xe1 && startsWith(b, p + 4, 'Exif')) {
-        const o = exifOrientation(b, p);
-        if (o > 1 && o <= 8) parts.push(orientationApp1(o));
-        removed.add('EXIF/GPS');
-      } else if (!keep) {
-        removed.add(m === 0xfe ? 'comment' : m === 0xe1 ? 'XMP' : 'APP' + (m - 0xe0));
-      }
-      if (keep) parts.push(seg);
-      p += 2 + len;
-    }
-    return { blob: new Blob(parts, { type: 'image/jpeg' }), removed: [...removed] };
+    const { parts, removed } = Core.stripJpegBytes(new Uint8Array(await file.arrayBuffer()));
+    return { blob: new Blob(parts, { type: 'image/jpeg' }), removed };
   }
 
   /* ---------- main ---------- */

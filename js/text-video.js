@@ -98,37 +98,7 @@
   const layoutCache = new Map();
 
   /* ---------------- layout ---------------- */
-  /** Split into user-perceived characters (keeps 👨‍👩‍👧 and Vietnamese accents intact). */
-  const segmenter = window.Intl && Intl.Segmenter ? new Intl.Segmenter('vi', { granularity: 'grapheme' }) : null;
-  const graphemes = (s) => (segmenter ? Array.from(segmenter.segment(s), (x) => x.segment) : Array.from(s));
-
-  /** Break a single word that is wider than maxW (URLs, hashtags…) into pieces. */
-  function splitLongWord(ctx, word, maxW) {
-    const parts = [];
-    let cur = '';
-    for (const g of graphemes(word)) {
-      if (cur && ctx.measureText(cur + g).width > maxW) { parts.push(cur); cur = g; } else cur += g;
-    }
-    if (cur) parts.push(cur);
-    return parts;
-  }
-
-  function wrap(ctx, text, maxW, breakWords) {
-    const out = [];
-    for (const para of text.split('\n')) {
-      let words = para.split(/\s+/).filter(Boolean);
-      if (breakWords) words = words.flatMap((w) => (ctx.measureText(w).width > maxW ? splitLongWord(ctx, w, maxW) : [w]));
-      if (!words.length) { out.push(''); continue; }
-      let line = words[0];
-      for (let i = 1; i < words.length; i++) {
-        const test = line + ' ' + words[i];
-        if (ctx.measureText(test).width <= maxW) line = test;
-        else { out.push(line); line = words[i]; }
-      }
-      out.push(line);
-    }
-    return out;
-  }
+  const { graphemes, wrap, colorsFor } = Core;
 
   function opts() {
     return {
@@ -199,24 +169,6 @@
       ctx.fillStyle = 'rgba(0,0,0,0.38)';
       ctx.fillRect(0, 0, W, H);
     } else t.bg(ctx, W, H);
-  }
-
-  function luminance(hex) {
-    const n = parseInt(hex.slice(1), 16);
-    const c = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => {
-      v /= 255;
-      return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
-    });
-    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
-  }
-
-  /** Text / handle colours that stay readable when the user replaces the template background. */
-  function colorsFor(t, o) {
-    if (o.bgMode === 'tpl') return { text: t.color, handle: t.handleColor || '#fff', stroke: t.stroke };
-    const darkBg = o.bgMode === 'image' || luminance(o.bgColor) < 0.4;
-    const text = t.box ? t.color : darkBg ? '#fff' : '#111';
-    const stroke = t.stroke ? { ...t.stroke, color: darkBg ? '#000' : '#fff' } : null;
-    return { text, handle: darkBg ? '#fff' : '#222', stroke };
   }
 
   const easeOutBack = (x) => 1 + 2.2 * Math.pow(x - 1, 3) + 1.2 * Math.pow(x - 1, 2);
@@ -341,18 +293,12 @@
 
   /* ---------------- timing ---------------- */
   function slides() {
-    return $('tvText').value.normalize('NFC').split(/\n\s*\n/).map((s) => s.trim()).filter(Boolean);
+    return Core.splitSlides($('tvText').value);
   }
 
   function timing() {
     const sl = slides();
-    const n = Math.max(1, sl.length);
-    const fixed = +$('tvSlideDur').value || 0;
-    let seg, duration;
-    if (fixed) { seg = fixed; duration = fixed * n; }
-    else if (audio) { duration = audio.duration; seg = duration / n; }
-    else { seg = 3; duration = 3 * n; }
-    if (audio) duration = Math.min(duration, audio.duration);
+    const { n, seg, duration } = Core.slideTiming(sl.length, +$('tvSlideDur').value || 0, audio ? audio.duration : 0);
     return { sl, n, seg, duration };
   }
 
@@ -462,6 +408,7 @@
 
   $('tvPlay').onclick = async () => {
     if (player.playing) { player.stop(); $('tvPlay').textContent = '▶ Xem thử'; preview(); return; }
+    audioCtx().resume(); // inside the tap, before any await (iOS)
     await ensureFonts();
     const sc = makeScene();
     canvas.width = sc.width; canvas.height = sc.height;

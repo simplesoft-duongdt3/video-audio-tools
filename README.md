@@ -11,6 +11,12 @@ Bộ công cụ xử lý ảnh / audio / video **chạy 100% trên trình duyệ
 | ✂️ Cắt & Resize | Cắt tự do hoặc theo tỉ lệ (9:16 TikTok, 1:1, 4:5, 16:9, 4:3…), xoay, lật, resize theo px, preset 1080×1920… |
 | 🖼️ Ảnh + Audio → Video | 1 ảnh hoặc slideshow nhiều ảnh + nhạc → MP4. Mặc định 9:16 1080×1920. Nền mờ / phủ kín, zoom Ken Burns, chuyển cảnh mờ dần, cắt đoạn audio |
 | 🔤 Text + Audio → Video | 10 template kiểu TikTok, mỗi đoạn văn = 1 slide, hiệu ứng chữ (bật lên, gõ chữ, từng từ…), nền ảnh/màu, handle @tên. Xuất video MP4 hoặc ảnh PNG từng slide |
+| 🎧 Audio → Video | 1 file audio (mp3, m4a, wav, aac, flac, ogg, ghi âm, hoặc video có tiếng) → MP4 có sóng nhạc chuyển động (cột phổ, đối xứng, waveform, vòng tròn, dạng sóng cả bài), tên bài, dòng phụ, ảnh bìa + nền mờ, thanh thời gian. Cắt đoạn bằng "bắt đầu từ" + thời lượng |
+| 🩺 Tự kiểm tra | `index.html#selftest` (link ở chân trang): chạy thử thật trên thiết bị đang dùng — giải mã m4a/mp3, nén ảnh, xuất video 1 giây… để biết máy đó dùng được gì |
+
+### iPhone: chọn file audio
+
+iOS hay làm mờ (không cho chọn) file m4a/mp3 trong app **Tệp** khi ô chọn file có `accept="audio/*"`. Trên iPhone/iPad trang bỏ bộ lọc này và kiểm tra bằng cách giải mã file. File ghi âm trong **Ghi âm (Voice Memos)**: bấm ••• → *Lưu vào Tệp* rồi chọn từ Tệp. Nhạc Apple Music có DRM nên không đọc được.
 
 ## Cách xuất video
 
@@ -26,6 +32,20 @@ python3 -m http.server 8765
 ```
 
 Mở http://localhost:8765
+
+## Kiểm thử
+
+```bash
+npm install                 # chỉ cài công cụ test (Playwright); site không có bước build
+npm run test:unit           # unit test logic thuần (js/core.js) + kiểm tra liên kết index.html ↔ js
+npm run test:e2e            # e2e: chạy server tĩnh local, điều khiển Chrome desktop, Android (Pixel 7) và iPhone (WebKit)
+npm test                    # cả hai
+```
+
+- Unit test (`tests/unit/`): node:test, không cần trình duyệt. Có kiểm tra giải mã pixel bằng ffmpeg nếu máy có ffmpeg.
+- E2E (`tests/e2e/`): tải file mẫu thật (`tests/fixtures/`: m4a, mp3, wav, flac, ogg, mp4, ảnh có EXIF), xuất ảnh/video rồi kiểm tra file tải về bằng `ffprobe` (codec H.264, kích thước, có tiếng, thời lượng). Cần Google Chrome và ffprobe.
+- WebKit trên Linux không cần sudo: `tests/setup-webkit-linux.sh`. Bản WebKit này của Playwright **không có AAC/H.264**, nên các test m4a/xuất video tự bỏ qua trên project iPhone (có ghi lý do) — iPhone thật thì có. Để chắc chắn trên máy thật, mở `#selftest` trên iPhone/Android.
+- Tạo lại file mẫu: `npm run fixtures` (cần ffmpeg).
 
 ## Deploy GitHub Pages
 

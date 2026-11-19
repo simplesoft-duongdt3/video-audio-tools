@@ -23,6 +23,7 @@
   <button data-tab="edit">✂️ Cắt &amp; Resize</button>
   <button data-tab="imgvideo">🖼️ Ảnh + Audio → Video</button>
   <button data-tab="textvideo">🔤 Text + Audio → Video</button>
+  <button data-tab="audiovideo">🎧 Audio → Video</button>
 </nav>
 
 <main>
@@ -155,7 +156,7 @@
       </label>
       <div class="thumbs" id="ivThumbs"></div>
       <label class="drop small" data-input="ivAudio">
-        <input type="file" id="ivAudio" accept="audio/*,video/*" hidden>
+        <input type="file" id="ivAudio" accept="audio/*,video/*" data-audio hidden>
         <span>🎵 Chọn audio (mp3, m4a, wav, ogg…)</span>
       </label>
       <div class="hint" id="ivAudioInfo"></div>
@@ -258,7 +259,7 @@ Bắt đầu từ hôm nay nhé! 📚</textarea>
         <label>Khung hình <select id="tvSizeSel" class="size-select"></select></label>
       </div>
       <label class="drop small" data-input="tvAudio">
-        <input type="file" id="tvAudio" accept="audio/*,video/*" hidden>
+        <input type="file" id="tvAudio" accept="audio/*,video/*" data-audio hidden>
         <span>🎵 Chọn audio (không bắt buộc)</span>
       </label>
       <div class="hint" id="tvAudioInfo"></div>
@@ -280,11 +281,84 @@ Bắt đầu từ hôm nay nhé! 📚</textarea>
     <div class="preview"><canvas id="tvCanvas"></canvas></div>
   </div>
 </section>
+<!-- ============ AUDIO -> VIDEO ============ -->
+<section class="panel" id="tab-audiovideo">
+  <h2>Audio → Video MP4</h2>
+  <p class="hint">Biến 1 file audio (mp3, m4a, wav, ghi âm, podcast…) thành video MP4 có sóng nhạc chuyển động, tên bài, ảnh bìa và thanh thời gian — đăng TikTok / Reels / YouTube.</p>
+  <div class="split">
+    <div class="controls">
+      <label class="drop small" data-input="avAudio">
+        <input type="file" id="avAudio" accept="audio/*,video/*" data-audio hidden>
+        <span>🎵 Chọn file audio (mp3, m4a, wav, aac, ogg, flac… hoặc video có tiếng)</span>
+      </label>
+      <div class="hint" id="avAudioInfo"></div>
+      <p class="hint ios-only" hidden>iPhone: file ghi âm trong <b>Ghi âm (Voice Memos)</b> → bấm ••• → <b>Lưu vào Tệp</b>, rồi chọn từ <b>Tệp</b>. Nhạc mua trên Apple Music có DRM nên không đọc được.</p>
+      <div class="row tight">
+        <label>Tên bài <input type="text" id="avTitle" placeholder="Tự lấy theo tên file"></label>
+        <label>Dòng phụ (ca sĩ / @handle) <input type="text" id="avSub" placeholder="@yourname"></label>
+      </div>
+      <div class="row tight">
+        <label>Kiểu sóng nhạc
+          <select id="avStyle">
+            <option value="bars">Cột phổ (spectrum)</option>
+            <option value="mirror">Cột đối xứng</option>
+            <option value="wave">Sóng âm (waveform)</option>
+            <option value="circle">Vòng tròn</option>
+            <option value="overview">Dạng sóng cả bài</option>
+            <option value="none">Không</option>
+          </select>
+        </label>
+        <label>Màu 1 <input type="color" id="avColor1" value="#25f4ee"></label>
+        <label>Màu 2 <input type="color" id="avColor2" value="#fe2c55"></label>
+      </div>
+      <div class="row tight">
+        <label>Nền
+          <select id="avBgMode">
+            <option value="gradient">Gradient tối</option>
+            <option value="color">Màu</option>
+            <option value="image">Ảnh (nền mờ + ảnh bìa)</option>
+          </select>
+        </label>
+        <label>Màu nền <input type="color" id="avBgColor" value="#101018"></label>
+      </div>
+      <label class="drop small" data-input="avImg">
+        <input type="file" id="avImg" accept="image/*,.heic,.heif" hidden>
+        <span>🖼️ Ảnh bìa (không bắt buộc)</span>
+      </label>
+      <div class="hint" id="avImgInfo"></div>
+      <div class="row tight">
+        <label>Khung hình <select id="avSize" class="size-select"></select></label>
+        <label>FPS <select id="avFps"><option>24</option><option selected>30</option><option>60</option></select></label>
+      </div>
+      <div class="row tight">
+        <label>Bắt đầu audio từ (s) <input type="number" id="avStart" value="0" min="0" step="0.1"></label>
+        <label>Thời lượng (s, trống = hết bài) <input type="number" id="avDur" min="0.5" step="0.1"></label>
+      </div>
+      <label class="check"><input type="checkbox" id="avProgress" checked> Thanh thời gian</label>
+      <div class="row">
+        <button id="avPlay">▶ Xem thử</button>
+        <button class="primary" id="avRender">Xuất video MP4</button>
+      </div>
+      <div class="progress" id="avProg" hidden><div></div><span></span></div>
+      <div id="avOut"></div>
+    </div>
+    <div class="preview"><canvas id="avCanvas"></canvas></div>
+  </div>
+</section>
+
+<!-- ============ SELF TEST (index.html#selftest) ============ -->
+<section class="panel" id="tab-selftest">
+  <h2>🩺 Tự kiểm tra thiết bị</h2>
+  <p class="hint">Chạy thử thật các bước (giải mã audio, nén ảnh, xuất video…) trên trình duyệt này để biết tính năng nào dùng được. ❌ = lỗi bắt buộc, ⚠️ = chạy được nhưng hạn chế.</p>
+  <button class="primary" id="stRun">Chạy lại</button>
+  <div id="stOut"></div>
+</section>
 </main>
 
 <footer class="foot">
   Mọi xử lý diễn ra trên máy bạn. Video xuất MP4 (H.264) qua WebCodecs trên Chrome/Edge/Safari mới; trình duyệt cũ sẽ ghi thời gian thực ra WebM.
   <span id="caps"></span>
+  · <a href="#selftest" id="stLink">🩺 Tự kiểm tra thiết bị</a>
 </footer>
 
 <div id="toast"></div>
@@ -295,6 +369,7 @@ Bắt đầu từ hôm nay nhé! 📚</textarea>
 <script src="https://cdn.jsdelivr.net/npm/upng-js@2.1.0/UPNG.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/mp4-muxer@5.1.3/build/mp4-muxer.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js" defer></script>
+<script src="js/core.js"></script>
 <script src="js/common.js"></script>
 <script src="js/convert.js"></script>
 <script src="js/compress.js"></script>
@@ -302,5 +377,7 @@ Bắt đầu từ hôm nay nhé! 📚</textarea>
 <script src="js/video-engine.js"></script>
 <script src="js/image-video.js"></script>
 <script src="js/text-video.js"></script>
+<script src="js/audio-video.js"></script>
+<script src="js/selftest.js"></script>
 </body>
 </html>

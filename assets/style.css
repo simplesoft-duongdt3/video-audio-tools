@@ -140,3 +140,9 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); }
   .results { grid-template-columns: repeat(2, 1fr); }
 }
 .hint.warn { color: #ffcf66; }
+
+.foot a { color: var(--accent2); }
+table.selftest { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 0.88rem; }
+table.selftest td { padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.selftest td:first-child { width: 28px; }
+table.selftest td:last-child { color: var(--muted); word-break: break-word; }

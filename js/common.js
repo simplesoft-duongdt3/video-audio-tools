@@ -9,20 +9,7 @@ function toast(msg, ms = 2600) {
   toast._t = setTimeout(() => t.classList.remove('show'), ms);
 }
 
-function formatBytes(n) {
-  if (n < 1024) return n + ' B';
-  if (n < 1048576) return (n / 1024).toFixed(1) + ' KB';
-  return (n / 1048576).toFixed(2) + ' MB';
-}
-
-function formatTime(s) {
-  s = Math.max(0, s);
-  const m = Math.floor(s / 60);
-  return m + ':' + String(Math.floor(s % 60)).padStart(2, '0');
-}
-
-const baseName = (name) => name.replace(/\.[^.]+$/, '');
-const isHeic = (f) => /image\/hei[cf]/i.test(f.type) || /\.hei[cf]$/i.test(f.name);
+const { formatBytes, formatTime, baseName, isHeic } = Core;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // yield to the UI (setTimeout, not rAF: rAF stalls in background tabs)
 const nextFrame = () => new Promise((r) => setTimeout(r, 16));
@@ -50,11 +37,7 @@ async function waitFor(cond, timeout = 15000) {
 
 /** HEIC files from Android/desktop sometimes have no MIME type or extension: sniff the ISO-BMFF brand. */
 async function sniffHeic(file) {
-  try {
-    const b = new Uint8Array(await file.slice(0, 16).arrayBuffer());
-    const str = String.fromCharCode(...b.slice(4, 12));
-    return /^ftyp(heic|heix|hevc|hevx|heim|heis|mif1|msf1)/.test(str);
-  } catch (_) { return false; }
+  try { return Core.isHeicBrand(new Uint8Array(await file.slice(0, 16).arrayBuffer())); } catch (_) { return false; }
 }
 
 async function decodeHeic(file) {
@@ -77,10 +60,12 @@ async function readImage(file) {
 }
 
 /* ---------- canvas size limits (iOS Safari: ~16.7 MP per canvas) ---------- */
-const IS_MOBILE = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Mac/.test(navigator.platform));
+const PLATFORM = Core.detectPlatform(navigator.userAgent, navigator.platform, navigator.maxTouchPoints);
+const IS_MOBILE = PLATFORM.mobile;
+const IS_IOS = PLATFORM.ios;
 const MAX_CANVAS_AREA = IS_MOBILE ? 16_000_000 : 64_000_000;
 /** Scale factor (≤1) that keeps w×h under the device's canvas limit. */
-const safeScale = (w, h) => Math.min(1, Math.sqrt(MAX_CANVAS_AREA / (w * h)));
+const safeScale = (w, h) => Core.fitArea(w, h, MAX_CANVAS_AREA);
 
 /* ---------- canvas export ---------- */
 const FORMAT_INFO = {
@@ -228,13 +213,39 @@ function audioCtx() {
 }
 
 async function decodeAudioFile(file) {
+  if (!Core.looksLikeAudio(file)) throw new Error(`"${file.name}" không phải file audio/video`);
   const buf = await file.arrayBuffer();
   const ctx = audioCtx();
   return new Promise((resolve, reject) => {
     // callback form for older Safari
-    const p = ctx.decodeAudioData(buf, resolve, () => reject(new Error('Không giải mã được audio này')));
+    const fail = () => reject(new Error(`Không giải mã được "${file.name}" — trình duyệt này không đọc được định dạng này (thử đổi sang mp3 hoặc wav)`));
+    const p = ctx.decodeAudioData(buf, (b) => (b && b.duration > 0 ? resolve(b) : fail()), fail);
     if (p && p.catch) p.catch(() => {});
   });
+}
+
+/*
+ * iPhone/iPad: accept="audio/*" makes iOS grey out many audio files in the Files app
+ * (m4a, mp3 without a registered type, Voice Memos exports…). Remove the filter on iOS
+ * and validate by decoding instead.
+ */
+document.querySelectorAll('input[type=file][data-audio]').forEach((inp) => {
+  if (IS_IOS) inp.removeAttribute('accept');
+  else inp.accept = 'audio/*,video/*,' + Core.AUDIO_EXT.map((e) => '.' + e).join(',');
+});
+
+/** Cheap, cross-browser blur (Safari has no ctx.filter): downscale then upscale. */
+function makeBlur(img, iw, ih, W, H, darken = 0.35) {
+  const small = makeCanvas(Math.max(8, W / 24), Math.max(8, H / 24));
+  drawImageFit(small.getContext('2d'), img, iw, ih, 0, 0, small.width, small.height, 'cover');
+  const mid = makeCanvas(W / 6, H / 6);
+  const m = mid.getContext('2d');
+  m.imageSmoothingQuality = 'high';
+  m.drawImage(small, 0, 0, mid.width, mid.height);
+  m.fillStyle = `rgba(0,0,0,${darken})`;
+  m.fillRect(0, 0, mid.width, mid.height);
+  small.width = small.height = 0;
+  return mid;
 }
 
 /* ---------- video output sizes (TikTok first) ---------- */

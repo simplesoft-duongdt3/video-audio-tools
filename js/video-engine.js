@@ -7,8 +7,7 @@
 const VideoEngine = (() => {
   const SR = 48000;
   const OfflineCtx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
-  // Mostly still images / text: ~0.07 bits per pixel is plenty (≈4.4 Mbps at 1080×1920@30).
-  const bitrateFor = (w, h, fps) => Math.min(10e6, Math.round(w * h * fps * 0.07));
+  const { bitrateFor } = Core;
 
   /** Yield to the event loop without setTimeout clamping (background tabs clamp timers to ≥1s). */
   const yieldUI = (() => {
@@ -52,8 +51,7 @@ const VideoEngine = (() => {
   async function pickVideoConfig(w, h, fps) {
     if (typeof VideoEncoder === 'undefined') return null;
     const bitrate = bitrateFor(w, h, fps);
-    const codecs = ['avc1.64002a', 'avc1.640028', 'avc1.4d002a', 'avc1.42e02a', 'avc1.640033', 'avc1.42e01f'];
-    for (const codec of codecs) {
+    for (const codec of Core.H264_CODECS) {
       const cfg = { codec, width: w, height: h, bitrate, framerate: fps, avc: { format: 'avc' } };
       try {
         const s = await VideoEncoder.isConfigSupported(cfg);
@@ -289,7 +287,8 @@ const VideoEngine = (() => {
         const t = actx.currentTime - start;
         if (t >= scene.duration) { this.stop(); onTick && onTick(-1); return; }
         scene.draw(this.ctx, Math.max(0, t));
-        onTick && onTick(t);
+        onTick && onTick(Math.max(0, t)); // negative = "ended": never send the 50 ms pre-roll
+
         this.raf = requestAnimationFrame(tick);
       };
       tick();
@@ -315,7 +314,7 @@ const VideoEngine = (() => {
     container.appendChild(box);
   }
 
-  return { render, Player, showOutput, capabilities };
+  return { render, Player, showOutput, capabilities, pickVideoConfig, pickAudioConfig };
 })();
 
 VideoEngine.capabilities().then((c) => {

@@ -5,26 +5,10 @@
   const canvas = $('ivCanvas');
   const player = new VideoEngine.Player(canvas);
 
-  /** Cheap, cross-browser blur (Safari has no ctx.filter): downscale then upscale. */
-  function makeBlur(im, W, H) {
-    const small = makeCanvas(Math.max(8, W / 24), Math.max(8, H / 24));
-    const s = small.getContext('2d');
-    drawImageFit(s, im.img, im.w, im.h, 0, 0, small.width, small.height, 'cover');
-    const mid = makeCanvas(W / 6, H / 6);
-    const m = mid.getContext('2d');
-    m.imageSmoothingQuality = 'high';
-    m.drawImage(small, 0, 0, mid.width, mid.height);
-    m.fillStyle = 'rgba(0,0,0,0.35)';
-    m.fillRect(0, 0, mid.width, mid.height);
-    return mid;
-  }
-
   function settings() {
     const size = getSize($('ivSize'));
     const start = Math.max(0, +$('ivStart').value || 0);
-    let duration = Math.max(0, +$('ivDur').value || 0);
-    if (!duration) duration = audio ? Math.max(0.5, audio.duration - start) : Math.max(1, images.length) * 4;
-    if (audio) duration = Math.min(duration, Math.max(0.5, audio.duration - start));
+    const duration = Core.clipDuration({ start, dur: $('ivDur').value, audioDur: audio ? audio.duration : 0, fallback: Math.max(1, images.length) * 4 });
     return {
       W: size.w, H: size.h, start, duration,
       fps: +$('ivFps').value,
@@ -46,7 +30,7 @@
       drawImageFit(ctx, im.img, im.w, im.h, 0, 0, W, H, 'cover', zoom, Math.min(1, Math.max(0, ox)), 0.5);
     } else {
       if (s.fit === 'blur') {
-        if (!im.blur || im.blur._key !== W + 'x' + H) { im.blur = makeBlur(im, W, H); im.blur._key = W + 'x' + H; }
+        if (!im.blur || im.blur._key !== W + 'x' + H) { im.blur = makeBlur(im.img, im.w, im.h, W, H); im.blur._key = W + 'x' + H; }
         ctx.imageSmoothingQuality = 'high';
         drawImageFit(ctx, im.blur, im.blur.width, im.blur.height, 0, 0, W, H, 'cover', 1.05);
       }
@@ -149,9 +133,8 @@
     fileName: () => (audioName || 'slideshow') + '-video',
     buildScene: () => {
       if (!images.length) throw new Error('Hãy chọn ít nhất 1 ảnh');
-      if (audio && (+$('ivStart').value || 0) >= audio.duration - 0.1) {
-        throw new Error(`"Bắt đầu audio từ" phải nhỏ hơn độ dài bài (${audio.duration.toFixed(1)}s)`);
-      }
+      const bad = audio && Core.checkStart($('ivStart').value, audio.duration);
+      if (bad) throw new Error(bad);
       player.stop();
       $('ivPlay').textContent = '▶ Xem thử';
       return scene();
