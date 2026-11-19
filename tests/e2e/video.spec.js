@@ -1,4 +1,5 @@
 const { test, expect } = require('@playwright/test');
+const { execFileSync } = require('node:child_process');
 const { audioLevel, fx, probe, hasFfprobe, openTab, renderAndDownload, codecs, NO_AAC, NO_EXPORT } = require('./helpers');
 
 test.skip(!hasFfprobe, 'ffprobe not installed');
@@ -198,4 +199,45 @@ test.describe('audio → video', () => {
       await expect(page.locator(`#${prefix}Play`)).toHaveText('▶ Xem thử', { timeout: 10_000 });
     });
   }
+});
+
+test.describe('export path robustness (TikTok stutter / slow export)', () => {
+  test('exported video has a perfectly constant frame rate', async ({ page }, ti) => {
+    await openTab(page, 'textvideo');
+    const c = await caps(page);
+    test.skip(!c.webcodecs, NO_EXPORT);
+    await page.setInputFiles('#tvAudio', fx('tone.mp3'));
+    await expect(page.locator('#tvAudioInfo')).toContainText('3 slide');
+    const dl = await renderAndDownload(page, 'tv', ti);
+    const pts = execFileSync('ffprobe', ['-v', 'error', '-select_streams', 'v', '-show_entries', 'packet=pts_time', '-of', 'csv=p=0', dl.path])
+      .toString().trim().split('\n').map(Number).sort((a, b) => a - b);
+    const deltas = new Set(pts.slice(1).map((p, i) => (p - pts[i]).toFixed(4)));
+    expect([...deltas]).toEqual(['0.0333']);
+    expect(pts.length).toBe(90);
+  });
+
+  test('an encoder setting the device rejects is retried on the fast path, not recorded in real time', async ({ page }, ti) => {
+    await openTab(page, 'audiovideo');
+    const c = await caps(page);
+    test.skip(!c.webcodecs, NO_EXPORT);
+    // On machines without a hardware H.264 encoder this makes the first attempt fail.
+    await page.evaluate(() => { VideoEngine.tuning.hardwareAcceleration = 'prefer-hardware'; });
+    await page.setInputFiles('#avAudio', fx('tone.wav'));
+    await expect(page.locator('#avAudioInfo')).toContainText('0:03');
+    const t0 = Date.now();
+    const dl = await renderAndDownload(page, 'av', ti);
+    expect(Date.now() - t0, 'faster than real time').toBeLessThan(15000);
+    await expect(page.locator('#avOut .warn')).toHaveCount(0);
+    expectVideo(dl.path, { width: 1080, height: 1920, duration: 3 });
+  });
+
+  test('when there is no WebCodecs, the real-time fallback says why', async ({ page }, ti) => {
+    test.skip(!ti.project.name.startsWith('desktop'), 'one browser is enough');
+    await page.addInitScript(() => { window.VideoEncoder = undefined; });
+    await openTab(page, 'textvideo');
+    await expect(page.locator('#caps')).toContainText('ghi thời gian thực', { timeout: 15000 });
+    await page.fill('#tvSlideDur', '0.7');
+    await page.click('#tvRender');
+    await expect(page.locator('#tvOut .warn')).toContainText('không có WebCodecs', { timeout: 30000 });
+  });
 });

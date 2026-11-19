@@ -79,10 +79,10 @@ const SelfTest = (() => {
       if (IS_IOS && a) throw new Error('accept=' + a);
       return IS_IOS ? 'iOS: không giới hạn loại file' : 'accept=' + (a || '').slice(0, 40) + '…';
     }, 'required'],
-    ['WebCodecs H.264 (xuất nhanh)', async () => {
+    ['Xuất nhanh (không phải ghi thời gian thực)', async () => {
       const c = await VideoEngine.capabilities();
-      if (!c.webcodecs) throw new Error('không có — sẽ ghi thời gian thực');
-      return 'OK';
+      if (!c.webcodecs) throw new Error('KHÔNG — sẽ ghi thời gian thực (chậm, dễ giật). Lý do: ' + c.reason);
+      return 'OK — H.264 qua WebCodecs';
     }, 'optional'],
     ['Mã hoá âm thanh AAC (để video có tiếng trên mọi app)', async () => {
       const { aac } = await VideoEngine.loadMediabunny();
@@ -94,7 +94,7 @@ const SelfTest = (() => {
         width: 360, height: 640, fps: 30, duration: 1, audio, audioOffset: 0,
         draw: (ctx, t) => { ctx.fillStyle = `hsl(${t * 360},80%,50%)`; ctx.fillRect(0, 0, 360, 640); },
       };
-      const { blob, ext, audioCodec } = await withTimeout(VideoEngine.render(scene, () => {}), 30000, 'xuất video');
+      const { blob, ext, audioCodec, mode, fallbackReason } = await withTimeout(VideoEngine.render(scene, () => {}), 30000, 'xuất video');
       if (!blob.size) throw new Error('file rỗng');
       const url = URL.createObjectURL(blob);
       const dur = await withTimeout(new Promise((res, rej) => {
@@ -112,7 +112,7 @@ const SelfTest = (() => {
         if (r < 0.05) throw new Error(`video xuất ra KHÔNG có tiếng (mức ${r.toFixed(3)})`);
         level = r.toFixed(2);
       }
-      const info = `${ext.toUpperCase()}, ${formatBytes(blob.size)}, ${Number.isFinite(dur) ? dur.toFixed(2) + 's' : '?s'}, audio ${audioCodec}, mức tiếng ${level}`;
+      const info = `${mode === 'fast' ? 'xuất nhanh' : 'ghi thời gian thực (' + fallbackReason + ')'}, ${ext.toUpperCase()}, ${formatBytes(blob.size)}, ${Number.isFinite(dur) ? dur.toFixed(2) + 's' : '?s'}, audio ${audioCodec}, mức tiếng ${level}`;
       if (ext !== 'mp4' || (Number.isFinite(dur) && Math.abs(dur - 1) > 0.3)) throw new Error(info);
       return info;
     }, 'required'],

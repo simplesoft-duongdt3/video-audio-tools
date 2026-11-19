@@ -11,6 +11,8 @@
 const VideoEngine = (() => {
   const SR = 48000;
   const AUDIO_BITRATE = 192000;
+  /** Encoder hints (tuned by benchmark, see tests). */
+  const tuning = {};
   const AAC_ENCODER_URL = 'https://cdn.jsdelivr.net/npm/@mediabunny/aac-encoder@1.65.2/dist/bundles/mediabunny-aac-encoder.min.mjs';
   const OfflineCtx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
   const { bitrateFor } = Core;
@@ -74,25 +76,31 @@ const VideoEngine = (() => {
     return mbPromise;
   }
 
-  async function canFast(w, h, fps) {
-    try {
-      const { MB } = await loadMediabunny();
-      return await MB.canEncodeVideo('avc', { width: w, height: h, bitrate: bitrateFor(w, h, fps), frameRate: fps });
-    } catch (e) {
+  /** → { ok: boolean, reason: string|null } — why the fast path can't be used, in plain words. */
+  async function fastSupport(w, h, fps) {
+    if (typeof VideoEncoder === 'undefined') return { ok: false, reason: 'trình duyệt không có WebCodecs (cần iOS/Safari 16.4+, Chrome/Edge 94+, Firefox 130+)' };
+    let MB;
+    try { ({ MB } = await loadMediabunny()); } catch (e) {
       console.warn('Mediabunny unavailable', e);
-      return false;
+      return { ok: false, reason: 'không tải được thư viện xuất video (' + (e.message || e) + ')' };
     }
+    const sizes = [{ bitrate: bitrateFor(w, h, fps), frameRate: fps }, {}]; // some Safari builds reject the bitrate hint
+    for (const extra of sizes) {
+      try { if (await MB.canEncodeVideo('avc', { width: w, height: h, ...extra })) return { ok: true, reason: null }; } catch (_) {}
+    }
+    return { ok: false, reason: `trình duyệt không mã hoá được H.264 ${w}×${h}` };
   }
+  const canFast = async (w, h, fps) => (await fastSupport(w, h, fps)).ok;
 
   async function capabilities() {
-    const fast = await canFast(1080, 1920, 30);
+    const fs = await fastSupport(1080, 1920, 30);
     let aac = null;
     try { aac = (await loadMediabunny()).aac; } catch (_) {}
-    return { webcodecs: fast, audio: fast && aac ? 'aac' : null, aac };
+    return { webcodecs: fs.ok, reason: fs.reason, audio: fs.ok && aac ? 'aac' : null, aac };
   }
 
   /* ---------------- fast path ---------------- */
-  async function renderFast(scene, onProgress, signal) {
+  async function renderFast(scene, onProgress, signal, hints = {}) {
     const { MB } = await loadMediabunny();
     const { width: w, height: h, fps, duration, draw } = scene;
     const canvas = makeCanvas(w, h);
@@ -100,13 +108,13 @@ const VideoEngine = (() => {
     const aborted = () => signal && signal.aborted;
 
     const output = new MB.Output({ format: new MB.Mp4OutputFormat({ fastStart: 'in-memory' }), target: new MB.BufferTarget() });
-    const video = new MB.CanvasSource(canvas, { codec: 'avc', bitrate: bitrateFor(w, h, fps), keyFrameInterval: 2 });
+    const video = new MB.CanvasSource(canvas, { codec: 'avc', bitrate: bitrateFor(w, h, fps), keyFrameInterval: 2, ...tuning, ...hints });
     output.addVideoTrack(video, { frameRate: fps });
     const audioSrc = scene.audio ? new MB.AudioBufferSource({ codec: 'aac', bitrate: AUDIO_BITRATE }) : null;
     if (audioSrc) output.addAudioTrack(audioSrc);
 
     const lock = await wakeLock();
-    let done = false;
+    let done = false, framesDone = 0;
     try {
       let ab = null;
       if (audioSrc) {
@@ -116,25 +124,28 @@ const VideoEngine = (() => {
       }
       await output.start();
 
-      // Audio is added in 1-second slices just ahead of the video, so the muxer can interleave as it goes.
-      let audioPos = 0;
-      const feedAudioUntil = async (sec) => {
+      // Audio (WASM AAC can take a few seconds) is encoded IN PARALLEL with the video, in 1-second slices.
+      let audioFailure = null;
+      const audioJob = (async () => {
         if (!ab) return;
-        const target = Math.min(ab.length, Math.ceil(sec * SR));
-        while (audioPos < target) {
-          const next = Math.min(target, audioPos + SR);
-          await audioSrc.add(sliceAudio(ab, audioPos, next));
-          audioPos = next;
+        for (let pos = 0; pos < ab.length && !aborted(); pos += SR) {
+          const m = performance.now();
+          await audioSrc.add(sliceAudio(ab, pos, Math.min(ab.length, pos + SR)));
+          timing.audio += performance.now() - m;
         }
-      };
+      })().catch((e) => { audioFailure = e; });
 
       const total = Math.max(1, Math.round(duration * fps));
       const t0 = performance.now();
       for (let i = 0; i < total; i++) {
         if (aborted()) throw abortErr();
-        await feedAudioUntil((i + fps) / fps); // ≈1 s ahead
+        if (audioFailure) throw audioFailure;
+        let m = performance.now();
         draw(ctx, i / fps);
+        timing.draw += performance.now() - m; m = performance.now();
         await video.add(i / fps, 1 / fps);
+        timing.encode += performance.now() - m;
+        framesDone = i + 1;
         if (i % 10 === 0) {
           const el = (performance.now() - t0) / 1000;
           const eta = i ? (el / i) * (total - i) : 0;
@@ -142,7 +153,8 @@ const VideoEngine = (() => {
           await yieldUI();
         }
       }
-      await feedAudioUntil(Infinity);
+      await audioJob;
+      if (audioFailure) throw audioFailure;
       if (aborted()) throw abortErr();
       video.close();
       if (audioSrc) audioSrc.close();
@@ -150,7 +162,10 @@ const VideoEngine = (() => {
       await output.finalize();
       done = true;
       onProgress(1, 'Xong!');
-      return { blob: new Blob([output.target.buffer], { type: 'video/mp4' }), ext: 'mp4', audioCodec: audioSrc ? 'aac' : null };
+      return { blob: new Blob([output.target.buffer], { type: 'video/mp4' }), ext: 'mp4', audioCodec: audioSrc ? 'aac' : null, mode: 'fast' };
+    } catch (e) {
+      e.framesDone = framesDone;
+      throw e;
     } finally {
       if (!done) await output.cancel().catch(() => {});
       canvas.width = canvas.height = 0;
@@ -177,7 +192,11 @@ const VideoEngine = (() => {
     const canvas = makeCanvas(w, h);
     const ctx = canvas.getContext('2d');
     draw(ctx, 0);
-    const stream = canvas.captureStream(fps);
+    // captureStream(0) + requestFrame(): exactly one captured frame per drawn frame (no duplicated/skipped frames).
+    let stream = canvas.captureStream(0);
+    let vtrack = stream.getVideoTracks()[0];
+    const manual = vtrack && typeof vtrack.requestFrame === 'function';
+    if (!manual) { stream.getTracks().forEach((t) => t.stop()); stream = canvas.captureStream(fps); vtrack = stream.getVideoTracks()[0]; }
     const actx = audioCtx();
     await actx.resume();
     let src = null;
@@ -205,14 +224,26 @@ const VideoEngine = (() => {
     if (src) src.start(start, scene.audioOffset || 0, duration);
 
     try {
-      // Timer driven by the audio clock (rAF would stall; this keeps the stop time exact).
+      // Driven by the audio clock. Each frame shows the picture for its exact slot (k / fps), so motion stays
+      // even even when the timer fires late; rAF (synced to the display) + a timer backup for robustness.
       await new Promise((resolve) => {
-        const iv = setInterval(() => {
+        let last = -1, raf = 0, iv = 0;
+        const step = () => {
           const t = actx.currentTime - start;
-          if ((signal && signal.aborted) || hiddenAbort || t >= duration) { clearInterval(iv); return resolve(); }
-          draw(ctx, Math.max(0, t));
-          onProgress(Math.max(0, t) / duration, `Đang ghi (thời gian thực) ${formatTime(t)} / ${formatTime(duration)} — giữ màn hình này mở`);
-        }, 1000 / fps);
+          if ((signal && signal.aborted) || hiddenAbort || t >= duration) {
+            cancelAnimationFrame(raf); clearInterval(iv); return resolve();
+          }
+          const k = Math.max(0, Math.floor(t * fps));
+          if (k !== last) {
+            last = k;
+            draw(ctx, k / fps);
+            if (manual) vtrack.requestFrame();
+            if (k % 5 === 0) onProgress(t / duration, `Đang ghi (thời gian thực) ${formatTime(t)} / ${formatTime(duration)} — giữ màn hình này mở`);
+          }
+        };
+        const loop = () => { step(); raf = requestAnimationFrame(loop); };
+        raf = requestAnimationFrame(loop);
+        iv = setInterval(step, 1000 / (fps * 2));
       });
     } finally {
       document.removeEventListener('visibilitychange', onVis);
@@ -226,21 +257,39 @@ const VideoEngine = (() => {
     if (hiddenAbort) throw new Error('Đã dừng vì bạn rời khỏi trang. Trình duyệt này ghi video theo thời gian thực — hãy giữ màn hình mở đến khi xong.');
     const type = (rec.mimeType || mimeType || 'video/webm').split(';')[0];
     onProgress(1, 'Xong!');
-    return { blob: new Blob(chunks, { type }), ext: type.includes('mp4') ? 'mp4' : 'webm', audioCodec: scene.audio ? 'recorder' : null };
+    return { blob: new Blob(chunks, { type }), ext: type.includes('mp4') ? 'mp4' : 'webm', audioCodec: scene.audio ? 'recorder' : null, mode: 'realtime' };
   }
 
+  let lastFallbackReason = null;
+  const timing = { draw: 0, encode: 0, audio: 0 };
   async function render(scene, onProgress = () => {}, signal) {
     scene.width -= scene.width % 2;
     scene.height -= scene.height % 2;
-    if (await canFast(scene.width, scene.height, scene.fps)) {
-      try {
-        return await renderFast(scene, onProgress, signal);
-      } catch (e) {
-        if (e.name === 'AbortError') throw e;
-        console.warn('Fast export failed, falling back to MediaRecorder', e);
+    const fs = await fastSupport(scene.width, scene.height, scene.fps);
+    let reason = fs.reason;
+    if (fs.ok) {
+      // Some devices reject one encoder setup but accept another: retry the FAST path with other
+      // settings before falling back to slow real-time recording — but only if it failed early.
+      const ladder = [{}, { hardwareAcceleration: 'prefer-hardware' }, { hardwareAcceleration: 'prefer-software' }, { latencyMode: 'realtime', bitrateMode: 'variable' }];
+      const errors = [];
+      for (const hints of ladder) {
+        try {
+          const r = await renderFast(scene, onProgress, signal, hints);
+          if (errors.length) r.retried = errors;
+          return r;
+        } catch (e) {
+          if (e.name === 'AbortError') throw e;
+          console.warn('Fast export failed with', hints, e);
+          errors.push(e.message || String(e));
+          if ((e.framesDone || 0) > scene.fps * 3) break; // failed late (e.g. out of memory): don't redo a long render 4×
+        }
       }
+      reason = 'xuất nhanh bị lỗi: ' + errors[errors.length - 1];
     }
-    return renderRecorder(scene, onProgress, signal);
+    lastFallbackReason = reason;
+    const r = await renderRecorder(scene, onProgress, signal);
+    r.fallbackReason = reason;
+    return r;
   }
 
   /* ---------------- live preview player ---------------- */
@@ -299,13 +348,13 @@ const VideoEngine = (() => {
     container.appendChild(box);
   }
 
-  return { render, Player, showOutput, capabilities, loadMediabunny };
+  return { render, Player, showOutput, capabilities, loadMediabunny, get lastFallbackReason() { return lastFallbackReason; }, tuning, timing };
 })();
 
 VideoEngine.capabilities().then((c) => {
   $('caps').textContent = c.webcodecs
     ? ` · Trình duyệt này: xuất nhanh MP4 (H.264 + AAC${c.aac === 'wasm' ? ' qua WASM' : ''}).`
-    : ' · Trình duyệt này: ghi thời gian thực (MediaRecorder).';
+    : ` · ⚠️ Trình duyệt này: ghi thời gian thực (chậm, có thể giật) — lý do: ${c.reason}.`;
 });
 
 /** Wires a "render video" button with progress + cancel. */
@@ -322,8 +371,9 @@ function wireRender({ btn, prog, out, buildScene, fileName }) {
     btn.textContent = 'Huỷ';
     out.innerHTML = '';
     try {
-      const { blob, ext, audioCodec } = await VideoEngine.render(scene, (f, txt) => setProgress(prog, f, txt), ctrl.signal);
+      const { blob, ext, mode, fallbackReason } = await VideoEngine.render(scene, (f, txt) => setProgress(prog, f, txt), ctrl.signal);
       let note = '';
+      if (mode === 'realtime') note = `⚠️ Video được ghi theo thời gian thực (chậm và có thể bị giật khi đăng TikTok) vì ${fallbackReason || 'trình duyệt không hỗ trợ xuất nhanh'}. Nên dùng Chrome/Edge/Safari bản mới, hoặc mở “🩺 Tự kiểm tra thiết bị” ở chân trang và gửi kết quả.`;
       if (ext === 'webm') note = '⚠️ File WebM: TikTok/iPhone có thể không nhận. Nên xuất bằng Chrome/Edge/Safari mới để có MP4.';
       VideoEngine.showOutput(out, blob, `${fileName()}.${ext}`, note);
       toast('Đã tạo video!');
