@@ -31,8 +31,14 @@ test('every local script exists, every js file is loaded, core.js loads before t
   assert.equal(local[0], 'js/core.js');
 });
 
-test('CDN scripts are pinned to exact versions', () => {
-  const cdn = [...html.matchAll(/<script src="(https?:[^"]+)"/g)].map((m) => m[1]);
+test('CDN scripts, import map and dynamic imports are pinned to exact versions', () => {
+  const engine = readFileSync(join(ROOT, 'js', 'video-engine.js'), 'utf8');
+  const cdn = [
+    ...[...html.matchAll(/<script src="(https?:[^"]+)"/g)].map((m) => m[1]),
+    ...[...html.matchAll(/"(https:\/\/cdn\.jsdelivr\.net[^"]+)"/g)].map((m) => m[1]),
+    ...[...engine.matchAll(/'(https:\/\/cdn[^']+)'/g)].map((m) => m[1]),
+  ];
+  assert.ok(cdn.some((u) => u.includes('mediabunny@')) && cdn.some((u) => u.includes('aac-encoder@')));
   assert.ok(cdn.length >= 5);
   for (const u of cdn) assert.match(u, /\d+\.\d+\.\d+/, u);
 });

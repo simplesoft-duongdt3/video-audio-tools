@@ -1,11 +1,15 @@
 const { test, expect } = require('@playwright/test');
-const { fx, probe, hasFfprobe, openTab, renderAndDownload, codecs, NO_AAC, NO_EXPORT } = require('./helpers');
+const { audioLevel, fx, probe, hasFfprobe, openTab, renderAndDownload, codecs, NO_AAC, NO_EXPORT } = require('./helpers');
 
 test.skip(!hasFfprobe, 'ffprobe not installed');
 
 const caps = codecs;
 
-function expectVideo(p, { width, height, duration, audio = true, fast = true }) {
+/** The source fixtures peak at about −19…−22 dBFS: the exported track must be just as loud (not silent). */
+const SOURCE_PEAK_DB = -22.5;
+
+function expectVideo(file, { width, height, duration, audio = true, fast = true }) {
+  const p = probe(file);
   expect(p.video, 'video stream').not.toBeNull();
   if (fast) {
     expect(p.format).toContain('mp4');
@@ -16,6 +20,11 @@ function expectVideo(p, { width, height, duration, audio = true, fast = true }) 
   if (audio) {
     expect(p.audio, 'audio stream').not.toBeNull();
     expect(p.audio.channels).toBe(2);
+    // AAC only: Opus-in-MP4 is silent on iPhone Photos / QuickTime / Windows players
+    if (fast) expect(p.audio.codec, 'audio codec').toBe('aac');
+    const lvl = audioLevel(file);
+    expect(lvl.max, 'audio peak dBFS (silent output?)').toBeGreaterThan(SOURCE_PEAK_DB - 3);
+    expect(lvl.mean, 'audio mean dBFS').toBeGreaterThan(-40);
   }
   if (duration && Number.isFinite(p.duration)) expect(Math.abs(p.duration - duration)).toBeLessThan(fast ? 0.25 : 0.8);
 }
@@ -33,7 +42,7 @@ test.describe('image + audio → video', () => {
     await page.fill('#ivDur', '2');
     const dl = await renderAndDownload(page, 'iv', ti);
     expect(dl.name).toMatch(/^tone-video\.(mp4|webm)$/);
-    expectVideo(probe(dl.path), { width: 1080, height: 1920, duration: 2, fast: c.webcodecs });
+    expectVideo(dl.path, { width: 1080, height: 1920, duration: 2, fast: c.webcodecs });
     expect(errors).toEqual([]);
   });
 
@@ -59,7 +68,7 @@ test.describe('text + audio → video', () => {
     await expect(page.locator('#tvAudioInfo')).toContainText('3 slide');
     await page.selectOption('#tvSizeSel', '720x1280');
     const dl = await renderAndDownload(page, 'tv', ti);
-    expectVideo(probe(dl.path), { width: 720, height: 1280, duration: 3, fast: c.webcodecs });
+    expectVideo(dl.path, { width: 720, height: 1280, duration: 3, fast: c.webcodecs });
     expect(errors).toEqual([]);
   });
 
@@ -126,7 +135,7 @@ test.describe('audio → video', () => {
     await page.fill('#avSub', '@duong');
     const dl = await renderAndDownload(page, 'av', ti);
     expect(dl.name).toMatch(/^tone-video\.(mp4|webm)$/);
-    expectVideo(probe(dl.path), { width: 1080, height: 1920, duration: 3, fast: c.webcodecs });
+    expectVideo(dl.path, { width: 1080, height: 1920, duration: 3, fast: c.webcodecs });
     expect(errors).toEqual([]);
   });
 
@@ -144,7 +153,7 @@ test.describe('audio → video', () => {
     for (const style of ['mirror', 'wave', 'circle', 'overview', 'none']) {
       await page.selectOption('#avStyle', style);
       const dl = await renderAndDownload(page, 'av', ti);
-      expectVideo(probe(dl.path), { width: 1920, height: 1080, duration: 2 });
+      expectVideo(dl.path, { width: 1920, height: 1080, duration: 2 });
     }
   });
 

@@ -20,8 +20,9 @@ iOS hay làm mờ (không cho chọn) file m4a/mp3 trong app **Tệp** khi ô ch
 
 ## Cách xuất video
 
-- **WebCodecs + [mp4-muxer](https://github.com/Vanilagy/mp4-muxer)**: mã hoá H.264 nhanh hơn thời gian thực → `.mp4`. Âm thanh AAC khi trình duyệt có bộ mã hoá AAC (Chrome/Edge trên Windows/macOS/Android, Safari); Chrome trên Linux chỉ có Opus.
-- **Dự phòng**: `canvas.captureStream` + `MediaRecorder` ghi theo thời gian thực (Safari → MP4, Firefox → WebM). Cần giữ màn hình mở trong khi ghi.
+- **WebCodecs + [Mediabunny](https://mediabunny.dev)**: mã hoá H.264 nhanh hơn thời gian thực → `.mp4`.
+- **Âm thanh luôn là AAC**: dùng bộ mã hoá AAC của trình duyệt nếu có; nếu không (Chrome/Firefox trên Linux, một số Safari) thì tự tải bộ mã hoá AAC WASM ([@mediabunny/aac-encoder](https://www.npmjs.com/package/@mediabunny/aac-encoder)). Không dùng Opus vì Opus trong MP4 bị **mất tiếng** trên Ảnh của iPhone, QuickTime, Windows Films & TV và một số trình upload.
+- **Dự phòng** (chỉ khi trình duyệt không có H.264): `canvas.captureStream` + `MediaRecorder` ghi theo thời gian thực. Cần giữ màn hình mở trong khi ghi.
 
 Trên điện thoại, nút **Chia sẻ / Lưu vào Ảnh** mở share sheet để lưu video vào thư viện hoặc gửi thẳng sang TikTok.
 
@@ -43,7 +44,7 @@ npm test                    # cả hai
 ```
 
 - Unit test (`tests/unit/`): node:test, không cần trình duyệt. Có kiểm tra giải mã pixel bằng ffmpeg nếu máy có ffmpeg.
-- E2E (`tests/e2e/`): tải file mẫu thật (`tests/fixtures/`: m4a, mp3, wav, flac, ogg, mp4, ảnh có EXIF), xuất ảnh/video rồi kiểm tra file tải về bằng `ffprobe` (codec H.264, kích thước, có tiếng, thời lượng). Cần Google Chrome và ffprobe.
+- E2E (`tests/e2e/`): tải file mẫu thật (`tests/fixtures/`: m4a, mp3, wav, flac, ogg, mp4, ảnh có EXIF), xuất ảnh/video rồi kiểm tra file tải về bằng `ffprobe` (codec H.264 + AAC, kích thước, thời lượng, và **độ lớn tiếng** bằng `volumedetect` để bắt lỗi video câm). Cần Google Chrome và ffprobe.
 - WebKit trên Linux không cần sudo: `tests/setup-webkit-linux.sh`. Bản WebKit này của Playwright **không có AAC/H.264**, nên các test m4a/xuất video tự bỏ qua trên project iPhone (có ghi lý do) — iPhone thật thì có. Để chắc chắn trên máy thật, mở `#selftest` trên iPhone/Android.
 - Tạo lại file mẫu: `npm run fixtures` (cần ffmpeg).
 
@@ -53,4 +54,4 @@ Settings → Pages → Source: *Deploy from a branch* → `main` / `(root)`. Fil
 
 ## Thư viện (CDN)
 
-Cropper.js, JSZip, UPNG.js + pako, mp4-muxer, heic2any, Google Fonts (Be Vietnam Pro, Montserrat, Playfair Display, Lobster, Roboto Mono — đều hỗ trợ tiếng Việt).
+Cropper.js, JSZip, UPNG.js + pako, Mediabunny + @mediabunny/aac-encoder, heic2any, Google Fonts (Be Vietnam Pro, Montserrat, Playfair Display, Lobster, Roboto Mono — đều hỗ trợ tiếng Việt).

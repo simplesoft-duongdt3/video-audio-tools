@@ -1,11 +1,17 @@
 /*
  * Video rendering engine.
- *  - Fast path: WebCodecs (VideoEncoder H.264 + AudioEncoder AAC/Opus) + mp4-muxer → MP4, faster than real time.
- *  - Fallback: canvas.captureStream + MediaRecorder (real time) → MP4 on Safari, WebM elsewhere.
+ *  - Fast path: Mediabunny (WebCodecs H.264 video + AAC audio) → MP4, faster than real time.
+ *    AAC is ALWAYS used: the browser's own encoder when it has one, otherwise a WASM AAC encoder
+ *    (@mediabunny/aac-encoder). Never Opus — Opus-in-MP4 is silent on iPhone Photos, QuickTime,
+ *    Windows Films & TV and some upload pipelines.
+ *  - Fallback: canvas.captureStream + MediaRecorder (real time), only when there is no H.264 encoder.
  * A "scene" is { width, height, fps, duration, draw(ctx, t), audio: AudioBuffer|null, audioOffset }.
+ * Mediabunny is loaded as an ES module via the import map in index.html (dynamic import works from classic scripts).
  */
 const VideoEngine = (() => {
   const SR = 48000;
+  const AUDIO_BITRATE = 192000;
+  const AAC_ENCODER_URL = 'https://cdn.jsdelivr.net/npm/@mediabunny/aac-encoder@1.65.2/dist/bundles/mediabunny-aac-encoder.min.mjs';
   const OfflineCtx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
   const { bitrateFor } = Core;
 
@@ -17,16 +23,7 @@ const VideoEngine = (() => {
     return () => new Promise((r) => { q.push(r); ch.port2.postMessage(0); });
   })();
 
-  /** Wait until an encoder's queue drains below `max`. */
-  async function drain(enc, max) {
-    while (enc.encodeQueueSize > max) {
-      if ('ondequeue' in enc) await new Promise((r) => enc.addEventListener('dequeue', r, { once: true }));
-      else await yieldUI();
-    }
-  }
-
   const abortErr = () => new DOMException('Đã huỷ', 'AbortError');
-  const closeQuietly = (enc) => { try { if (enc && enc.state !== 'closed') enc.close(); } catch (_) {} };
 
   async function wakeLock() {
     try { return await navigator.wakeLock.request('screen'); } catch (_) { return null; }
@@ -48,109 +45,96 @@ const VideoEngine = (() => {
     return oac.startRendering();
   }
 
-  async function pickVideoConfig(w, h, fps) {
-    if (typeof VideoEncoder === 'undefined') return null;
-    const bitrate = bitrateFor(w, h, fps);
-    for (const codec of Core.H264_CODECS) {
-      const cfg = { codec, width: w, height: h, bitrate, framerate: fps, avc: { format: 'avc' } };
-      try {
-        const s = await VideoEncoder.isConfigSupported(cfg);
-        if (s.supported) return cfg;
-      } catch (_) { /* try next */ }
-    }
-    return null;
+  /** Copy [from, to) frames of an AudioBuffer into a new AudioBuffer (for feeding audio in step with video). */
+  function sliceAudio(ab, from, to) {
+    const n = Math.max(1, to - from);
+    const out = new AudioBuffer({ length: n, numberOfChannels: ab.numberOfChannels, sampleRate: ab.sampleRate });
+    for (let c = 0; c < ab.numberOfChannels; c++) out.copyToChannel(ab.getChannelData(c).subarray(from, from + n), c);
+    return out;
   }
 
-  async function pickAudioConfig() {
-    if (typeof AudioEncoder === 'undefined') return null;
-    const cands = [
-      { codec: 'mp4a.40.2', mux: 'aac', sampleRate: SR, numberOfChannels: 2, bitrate: 192000 },
-      { codec: 'opus', mux: 'opus', sampleRate: SR, numberOfChannels: 2, bitrate: 160000 },
-    ];
-    for (const c of cands) {
-      const { mux, ...cfg } = c;
-      try {
-        const s = await AudioEncoder.isConfigSupported(cfg);
-        if (s.supported) return { cfg, mux };
-      } catch (_) { /* next */ }
+  /* ---------------- Mediabunny loading ---------------- */
+  let mbPromise = null;
+  /** → { MB, aac: 'native' | 'wasm' } */
+  function loadMediabunny() {
+    if (!mbPromise) {
+      mbPromise = (async () => {
+        const MB = await import('mediabunny');
+        let aac = 'native';
+        const native = await MB.canEncodeAudio('aac', { numberOfChannels: 2, sampleRate: SR, bitrate: AUDIO_BITRATE }).catch(() => false);
+        if (!native) {
+          const { registerAacEncoder } = await import(AAC_ENCODER_URL);
+          registerAacEncoder();
+          aac = 'wasm';
+        }
+        return { MB, aac };
+      })();
+      mbPromise.catch(() => { mbPromise = null; }); // allow a retry after a network error
     }
-    return null;
+    return mbPromise;
+  }
+
+  async function canFast(w, h, fps) {
+    try {
+      const { MB } = await loadMediabunny();
+      return await MB.canEncodeVideo('avc', { width: w, height: h, bitrate: bitrateFor(w, h, fps), frameRate: fps });
+    } catch (e) {
+      console.warn('Mediabunny unavailable', e);
+      return false;
+    }
   }
 
   async function capabilities() {
-    const v = await pickVideoConfig(1080, 1920, 30);
-    const a = await pickAudioConfig();
-    return { webcodecs: !!(v && window.Mp4Muxer), audio: a ? a.mux : null };
+    const fast = await canFast(1080, 1920, 30);
+    let aac = null;
+    try { aac = (await loadMediabunny()).aac; } catch (_) {}
+    return { webcodecs: fast, audio: fast && aac ? 'aac' : null, aac };
   }
 
-  /* ---------------- WebCodecs path ---------------- */
-  async function renderWebCodecs(scene, vcfg, acfg, onProgress, signal) {
+  /* ---------------- fast path ---------------- */
+  async function renderFast(scene, onProgress, signal) {
+    const { MB } = await loadMediabunny();
     const { width: w, height: h, fps, duration, draw } = scene;
     const canvas = makeCanvas(w, h);
     const ctx = canvas.getContext('2d', { alpha: false });
-    const hasAudio = !!(scene.audio && acfg);
     const aborted = () => signal && signal.aborted;
 
-    const muxer = new Mp4Muxer.Muxer({
-      target: new Mp4Muxer.ArrayBufferTarget(),
-      video: { codec: 'avc', width: w, height: h, frameRate: fps },
-      audio: hasAudio ? { codec: acfg.mux, numberOfChannels: 2, sampleRate: SR } : undefined,
-      fastStart: 'in-memory',
-      firstTimestampBehavior: 'offset',
-    });
+    const output = new MB.Output({ format: new MB.Mp4OutputFormat({ fastStart: 'in-memory' }), target: new MB.BufferTarget() });
+    const video = new MB.CanvasSource(canvas, { codec: 'avc', bitrate: bitrateFor(w, h, fps), keyFrameInterval: 2 });
+    output.addVideoTrack(video, { frameRate: fps });
+    const audioSrc = scene.audio ? new MB.AudioBufferSource({ codec: 'aac', bitrate: AUDIO_BITRATE }) : null;
+    if (audioSrc) output.addAudioTrack(audioSrc);
 
-    let failure = null;
-    let venc = null, aenc = null;
     const lock = await wakeLock();
+    let done = false;
     try {
-      venc = new VideoEncoder({
-        output: (chunk, meta) => { try { muxer.addVideoChunk(chunk, meta); } catch (e) { failure = e; } },
-        error: (e) => (failure = e),
-      });
-      venc.configure(vcfg);
-
-      // ---- audio first (fast) ----
-      if (hasAudio) {
+      let ab = null;
+      if (audioSrc) {
         onProgress(0, 'Đang xử lý audio…');
-        const ab = await prepareAudio(scene.audio, scene.audioOffset || 0, duration);
+        ab = await prepareAudio(scene.audio, scene.audioOffset || 0, duration);
         if (aborted()) throw abortErr();
-        aenc = new AudioEncoder({
-          output: (chunk, meta) => { try { muxer.addAudioChunk(chunk, meta); } catch (e) { failure = e; } },
-          error: (e) => (failure = e),
-        });
-        aenc.configure(acfg.cfg);
-        const L = ab.getChannelData(0);
-        const R = ab.numberOfChannels > 1 ? ab.getChannelData(1) : L;
-        const N = 1024 * 4;
-        for (let i = 0; i < ab.length; i += N) {
-          if (aborted()) throw abortErr();
-          if (failure) throw failure;
-          const n = Math.min(N, ab.length - i);
-          const data = new Float32Array(n * 2);
-          data.set(L.subarray(i, i + n), 0);
-          data.set(R.subarray(i, i + n), n);
-          const ad = new AudioData({ format: 'f32-planar', sampleRate: SR, numberOfFrames: n, numberOfChannels: 2, timestamp: Math.round((i * 1e6) / SR), data });
-          aenc.encode(ad);
-          ad.close();
-          await drain(aenc, 20);
-        }
-        await aenc.flush();
-        aenc.close();
       }
-      if (failure) throw failure;
+      await output.start();
 
-      // ---- video frames ----
+      // Audio is added in 1-second slices just ahead of the video, so the muxer can interleave as it goes.
+      let audioPos = 0;
+      const feedAudioUntil = async (sec) => {
+        if (!ab) return;
+        const target = Math.min(ab.length, Math.ceil(sec * SR));
+        while (audioPos < target) {
+          const next = Math.min(target, audioPos + SR);
+          await audioSrc.add(sliceAudio(ab, audioPos, next));
+          audioPos = next;
+        }
+      };
+
       const total = Math.max(1, Math.round(duration * fps));
-      const gop = fps * 2;
       const t0 = performance.now();
       for (let i = 0; i < total; i++) {
         if (aborted()) throw abortErr();
-        if (failure) throw failure;
+        await feedAudioUntil((i + fps) / fps); // ≈1 s ahead
         draw(ctx, i / fps);
-        const frame = new VideoFrame(canvas, { timestamp: Math.round((i * 1e6) / fps), duration: Math.round(1e6 / fps) });
-        venc.encode(frame, { keyFrame: i % gop === 0 });
-        frame.close();
-        await drain(venc, 6);
+        await video.add(i / fps, 1 / fps);
         if (i % 10 === 0) {
           const el = (performance.now() - t0) / 1000;
           const eta = i ? (el / i) * (total - i) : 0;
@@ -158,15 +142,18 @@ const VideoEngine = (() => {
           await yieldUI();
         }
       }
-      await venc.flush();
-      venc.close();
-      if (failure) throw failure;
-      muxer.finalize();
+      await feedAudioUntil(Infinity);
+      if (aborted()) throw abortErr();
+      video.close();
+      if (audioSrc) audioSrc.close();
+      onProgress(1, 'Đang hoàn tất file…');
+      await output.finalize();
+      done = true;
       onProgress(1, 'Xong!');
-      return { blob: new Blob([muxer.target.buffer], { type: 'video/mp4' }), ext: 'mp4', audioCodec: hasAudio ? acfg.mux : null };
+      return { blob: new Blob([output.target.buffer], { type: 'video/mp4' }), ext: 'mp4', audioCodec: audioSrc ? 'aac' : null };
     } finally {
-      closeQuietly(aenc);
-      closeQuietly(venc);
+      if (!done) await output.cancel().catch(() => {});
+      canvas.width = canvas.height = 0;
       if (lock) lock.release().catch(() => {});
     }
   }
@@ -245,14 +232,12 @@ const VideoEngine = (() => {
   async function render(scene, onProgress = () => {}, signal) {
     scene.width -= scene.width % 2;
     scene.height -= scene.height % 2;
-    const vcfg = window.Mp4Muxer ? await pickVideoConfig(scene.width, scene.height, scene.fps) : null;
-    const acfg = scene.audio ? await pickAudioConfig() : null;
-    if (vcfg && (!scene.audio || acfg)) {
+    if (await canFast(scene.width, scene.height, scene.fps)) {
       try {
-        return await renderWebCodecs(scene, vcfg, acfg, onProgress, signal);
+        return await renderFast(scene, onProgress, signal);
       } catch (e) {
         if (e.name === 'AbortError') throw e;
-        console.warn('WebCodecs failed, falling back to MediaRecorder', e);
+        console.warn('Fast export failed, falling back to MediaRecorder', e);
       }
     }
     return renderRecorder(scene, onProgress, signal);
@@ -314,13 +299,12 @@ const VideoEngine = (() => {
     container.appendChild(box);
   }
 
-  return { render, Player, showOutput, capabilities, pickVideoConfig, pickAudioConfig };
+  return { render, Player, showOutput, capabilities, loadMediabunny };
 })();
 
 VideoEngine.capabilities().then((c) => {
   $('caps').textContent = c.webcodecs
-    ? ` · Trình duyệt này: xuất nhanh MP4 (H.264${c.audio ? ' + ' + c.audio.toUpperCase() : ''}).` +
-      (c.audio === 'opus' ? ' ⚠️ Không có AAC: nên dùng Chrome/Edge trên Windows/macOS/Android hoặc Safari để video có tiếng chuẩn TikTok.' : '')
+    ? ` · Trình duyệt này: xuất nhanh MP4 (H.264 + AAC${c.aac === 'wasm' ? ' qua WASM' : ''}).`
     : ' · Trình duyệt này: ghi thời gian thực (MediaRecorder).';
 });
 
@@ -340,7 +324,6 @@ function wireRender({ btn, prog, out, buildScene, fileName }) {
     try {
       const { blob, ext, audioCodec } = await VideoEngine.render(scene, (f, txt) => setProgress(prog, f, txt), ctrl.signal);
       let note = '';
-      if (audioCodec === 'opus') note = '⚠️ Âm thanh là Opus (trình duyệt này không có AAC). Một số app (QuickTime, iPhone cũ, vài trình upload) có thể không phát được tiếng — nên xuất bằng Chrome/Edge trên Windows/macOS/Android hoặc Safari.';
       if (ext === 'webm') note = '⚠️ File WebM: TikTok/iPhone có thể không nhận. Nên xuất bằng Chrome/Edge/Safari mới để có MP4.';
       VideoEngine.showOutput(out, blob, `${fileName()}.${ext}`, note);
       toast('Đã tạo video!');

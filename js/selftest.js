@@ -30,8 +30,9 @@ const SelfTest = (() => {
 
   /** Checks: [name, fn, level]. level 'required' = the site is broken without it; 'optional' = degraded. */
   const CHECKS = [
-    ['Thư viện CDN đã tải (Cropper, JSZip, UPNG, mp4-muxer)', async () => {
-      const miss = ['Cropper', 'JSZip', 'UPNG', 'Mp4Muxer'].filter((k) => !window[k]);
+    ['Thư viện CDN đã tải (Cropper, JSZip, UPNG, Mediabunny)', async () => {
+      const miss = ['Cropper', 'JSZip', 'UPNG'].filter((k) => !window[k]);
+      try { await VideoEngine.loadMediabunny(); } catch (e) { miss.push('Mediabunny (' + e.message + ')'); }
       if (miss.length) throw new Error('thiếu ' + miss.join(', '));
       return 'OK';
     }, 'required'],
@@ -79,17 +80,15 @@ const SelfTest = (() => {
       return IS_IOS ? 'iOS: không giới hạn loại file' : 'accept=' + (a || '').slice(0, 40) + '…';
     }, 'required'],
     ['WebCodecs H.264 (xuất nhanh)', async () => {
-      const v = await VideoEngine.pickVideoConfig(1080, 1920, 30);
-      if (!v || !window.Mp4Muxer) throw new Error('không có — sẽ ghi thời gian thực');
-      return v.codec;
+      const c = await VideoEngine.capabilities();
+      if (!c.webcodecs) throw new Error('không có — sẽ ghi thời gian thực');
+      return 'OK';
     }, 'optional'],
-    ['Mã hoá âm thanh AAC', async () => {
-      const a = await VideoEngine.pickAudioConfig();
-      if (!a) throw new Error('không có AudioEncoder');
-      if (a.mux !== 'aac') throw new Error('chỉ có ' + a.mux.toUpperCase() + ' (TikTok/iPhone cũ có thể không phát tiếng)');
-      return 'AAC';
-    }, 'optional'],
-    ['Xuất video có tiếng (1 giây)', async () => {
+    ['Mã hoá âm thanh AAC (để video có tiếng trên mọi app)', async () => {
+      const { aac } = await VideoEngine.loadMediabunny();
+      return aac === 'native' ? 'AAC của trình duyệt' : 'AAC qua WASM (trình duyệt không có sẵn)';
+    }, 'required'],
+    ['Xuất video có tiếng (1 giây) và nghe lại được', async () => {
       const audio = await decodeAudioFile(makeWav(1.2));
       const scene = {
         width: 360, height: 640, fps: 30, duration: 1, audio, audioOffset: 0,
@@ -105,9 +104,16 @@ const SelfTest = (() => {
         v.onerror = () => rej(new Error('trình duyệt không đọc lại được video vừa xuất'));
         v.src = url;
       }), 10000, 'đọc video').finally(() => URL.revokeObjectURL(url));
-      const ok = ext === 'mp4' && (Number.isFinite(dur) ? Math.abs(dur - 1) < 0.3 : true);
-      const info = `${ext.toUpperCase()}, ${formatBytes(blob.size)}, ${Number.isFinite(dur) ? dur.toFixed(2) + 's' : '?s'}, audio ${audioCodec}`;
-      if (!ok) throw new Error(info);
+      // Decode the sound track of the file we just made: catches "plays in preview, silent after download".
+      let level = '?';
+      if (document.createElement('audio').canPlayType('audio/mp4; codecs="mp4a.40.2"')) {
+        const back = await decodeAudioFile(new File([blob], 'out.mp4', { type: 'video/mp4' }));
+        const r = Core.rms(back.getChannelData(0).subarray(0, Math.floor(back.sampleRate * 0.8)));
+        if (r < 0.05) throw new Error(`video xuất ra KHÔNG có tiếng (mức ${r.toFixed(3)})`);
+        level = r.toFixed(2);
+      }
+      const info = `${ext.toUpperCase()}, ${formatBytes(blob.size)}, ${Number.isFinite(dur) ? dur.toFixed(2) + 's' : '?s'}, audio ${audioCodec}, mức tiếng ${level}`;
+      if (ext !== 'mp4' || (Number.isFinite(dur) && Math.abs(dur - 1) > 0.3)) throw new Error(info);
       return info;
     }, 'required'],
     ['Chia sẻ file (lưu vào Ảnh / gửi TikTok)', async () => {

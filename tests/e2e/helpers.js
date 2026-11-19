@@ -1,4 +1,4 @@
-const { execFileSync } = require('node:child_process');
+const { execFileSync, spawnSync } = require('node:child_process');
 const { join } = require('node:path');
 const { createHash } = require('node:crypto');
 const { existsSync, readFileSync, writeFileSync, mkdirSync } = require('node:fs');
@@ -50,6 +50,13 @@ function probe(file) {
   };
 }
 
+/** Peak and mean level of the audio track in dBFS (ffmpeg volumedetect). */
+function audioLevel(file) {
+  const r = spawnSync('ffmpeg', ['-hide_banner', '-i', file, '-vn', '-af', 'volumedetect', '-f', 'null', '-'], { encoding: 'utf8' });
+  const num = (k) => { const m = r.stderr.match(new RegExp(k + ': (-?[0-9.]+|-inf) dB')); return m ? (m[1] === '-inf' ? -Infinity : +m[1]) : -Infinity; };
+  return { max: num('max_volume'), mean: num('mean_volume') };
+}
+
 /** Image size via ffprobe. */
 function imageSize(file) {
   const p = probe(file);
@@ -66,7 +73,7 @@ async function openTab(page, tab) {
   });
   await useCdnCache(page);
   await page.goto('index.html' + (tab ? '#' + tab : ''));
-  await page.waitForFunction(() => typeof Core !== 'undefined' && typeof VideoEngine !== 'undefined' && typeof SelfTest !== 'undefined' && window.Mp4Muxer && window.JSZip);
+  await page.waitForFunction(() => typeof Core !== 'undefined' && typeof VideoEngine !== 'undefined' && typeof SelfTest !== 'undefined' && window.JSZip);
   if (tab) await expect(page.locator('#tab-' + tab)).toHaveClass(/active/);
   return errors;
 }
@@ -93,13 +100,13 @@ async function renderAndDownload(page, prefix, testInfo) {
  */
 async function codecs(page) {
   return page.evaluate(async () => ({
+    ...(await VideoEngine.capabilities()), // its `aac` (encoder kind) is replaced below by "can decode AAC"
     aac: !!document.createElement('audio').canPlayType('audio/mp4; codecs="mp4a.40.2"'),
     h264: !!document.createElement('video').canPlayType('video/mp4; codecs="avc1.42E01E"'),
-    ...(await VideoEngine.capabilities()),
     recorder: !!window.MediaRecorder,
   }));
 }
 const NO_AAC = 'this browser build has no AAC decoder (Playwright Linux WebKit); real iPhone Safari has one';
 const NO_EXPORT = 'this browser build cannot encode video (no H.264 / MediaRecorder)';
 
-module.exports = { codecs, NO_AAC, NO_EXPORT, fx, probe, imageSize, hasFfprobe, openTab, grabDownload, renderAndDownload };
+module.exports = { audioLevel, codecs, NO_AAC, NO_EXPORT, fx, probe, imageSize, hasFfprobe, openTab, grabDownload, renderAndDownload };
