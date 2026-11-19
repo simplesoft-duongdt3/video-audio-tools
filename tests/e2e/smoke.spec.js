@@ -30,7 +30,11 @@ test('audio pickers: iOS gets no accept filter, others get the audio list', asyn
     if (isIOS) expect(accept, id).toBeNull();
     else expect(accept, id).toContain('.m4a');
   }
-  await expect(page.locator('#tab-audiovideo .ios-only')).toBeVisible({ visible: isIOS });
+  for (const tab of ['imgvideo', 'textvideo', 'audiovideo']) {
+    await page.click(`#tabs button[data-tab="${tab}"]`);
+    await expect(page.locator(`#tab-${tab} .ios-only`), tab).toBeVisible({ visible: isIOS });
+    if (isIOS) await expect(page.locator(`#tab-${tab} .ios-only`)).toContainText('Lưu vào Tệp');
+  }
 });
 
 test('self test: every required check passes', async ({ page }, testInfo) => {

@@ -229,6 +229,7 @@ async function decodeAudioFile(file) {
  * (m4a, mp3 without a registered type, Voice Memos exports…). Remove the filter on iOS
  * and validate by decoding instead.
  */
+document.querySelectorAll('.ios-only').forEach((e) => (e.hidden = !IS_IOS));
 document.querySelectorAll('input[type=file][data-audio]').forEach((inp) => {
   if (IS_IOS) inp.removeAttribute('accept');
   else inp.accept = 'audio/*,video/*,' + Core.AUDIO_EXT.map((e) => '.' + e).join(',');

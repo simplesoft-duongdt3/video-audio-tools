@@ -8,8 +8,6 @@
   const player = new VideoEngine.Player(canvas);
   const FFT = 2048;
 
-  document.querySelectorAll('.ios-only').forEach((e) => (e.hidden = !IS_IOS));
-
   function opts() {
     const size = getSize($('avSize'));
     const audioDur = audio ? audio.duration : 0;

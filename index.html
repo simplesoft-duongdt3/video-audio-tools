@@ -160,6 +160,7 @@
         <span>🎵 Chọn audio (mp3, m4a, wav, ogg…)</span>
       </label>
       <div class="hint" id="ivAudioInfo"></div>
+      <div class="hint warn ios-only" hidden>📱 iPhone không cho trang web mở bài hát trong app <b>Nhạc (Music)</b> — chỉ chọn được từ <b>Tệp (Files)</b> hoặc video trong <b>Ảnh</b>. Cách đưa nhạc vào Tệp: tải mp3 bằng Safari (vào Tệp › Tải về) · Zalo/Messenger/Telegram: giữ file › Chia sẻ › <i>Lưu vào Tệp</i> · Ghi âm: ••• › <i>Lưu vào Tệp</i> · AirDrop từ máy tính. Nhạc Apple Music có DRM nên không dùng được.</div>
       <div class="row tight">
         <label>Khung hình <select id="ivSize" class="size-select"></select></label>
         <label>FPS <select id="ivFps"><option>24</option><option selected>30</option><option>60</option></select></label>
@@ -263,6 +264,7 @@ Bắt đầu từ hôm nay nhé! 📚</textarea>
         <span>🎵 Chọn audio (không bắt buộc)</span>
       </label>
       <div class="hint" id="tvAudioInfo"></div>
+      <div class="hint warn ios-only" hidden>📱 iPhone không cho trang web mở bài hát trong app <b>Nhạc (Music)</b> — chỉ chọn được từ <b>Tệp (Files)</b> hoặc video trong <b>Ảnh</b>. Cách đưa nhạc vào Tệp: tải mp3 bằng Safari (vào Tệp › Tải về) · Zalo/Messenger/Telegram: giữ file › Chia sẻ › <i>Lưu vào Tệp</i> · Ghi âm: ••• › <i>Lưu vào Tệp</i> · AirDrop từ máy tính. Nhạc Apple Music có DRM nên không dùng được.</div>
       <div class="row tight">
         <label>Giây mỗi slide (khi không có audio / ghi đè) <input type="number" id="tvSlideDur" min="0.5" step="0.5" placeholder="tự động"></label>
         <label>FPS <select id="tvFps"><option>24</option><option selected>30</option><option>60</option></select></label>
@@ -292,7 +294,7 @@ Bắt đầu từ hôm nay nhé! 📚</textarea>
         <span>🎵 Chọn file audio (mp3, m4a, wav, aac, ogg, flac… hoặc video có tiếng)</span>
       </label>
       <div class="hint" id="avAudioInfo"></div>
-      <p class="hint ios-only" hidden>iPhone: file ghi âm trong <b>Ghi âm (Voice Memos)</b> → bấm ••• → <b>Lưu vào Tệp</b>, rồi chọn từ <b>Tệp</b>. Nhạc mua trên Apple Music có DRM nên không đọc được.</p>
+      <div class="hint warn ios-only" hidden>📱 iPhone không cho trang web mở bài hát trong app <b>Nhạc (Music)</b> — chỉ chọn được từ <b>Tệp (Files)</b> hoặc video trong <b>Ảnh</b>. Cách đưa nhạc vào Tệp: tải mp3 bằng Safari (vào Tệp › Tải về) · Zalo/Messenger/Telegram: giữ file › Chia sẻ › <i>Lưu vào Tệp</i> · Ghi âm: ••• › <i>Lưu vào Tệp</i> · AirDrop từ máy tính. Nhạc Apple Music có DRM nên không dùng được.</div>
       <div class="row tight">
         <label>Tên bài <input type="text" id="avTitle" placeholder="Tự lấy theo tên file"></label>
         <label>Dòng phụ (ca sĩ / @handle) <input type="text" id="avSub" placeholder="@yourname"></label>
