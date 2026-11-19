@@ -309,13 +309,24 @@
     const W = size.w, H = size.h;
     const t = tpl, bg = bgImage; // snapshot: UI changes during a render must not leak into it
     const bar = Math.max(6, Math.round(10 * Math.min(W, H) / 1080));
+    let still = null;
     const draw = (ctx, time) => {
       const k = Math.min(n - 1, Math.floor(time / seg));
       const local = time - k * seg;
       let a = 1;
       if (o.anim === 'type' || o.anim === 'word') a = Math.min(1, local / Math.max(0.3, seg * 0.6));
       else if (o.anim !== 'none') a = Math.min(1, local / Math.min(0.55, seg / 2));
-      drawSlide(ctx, W, H, sl[k] || '', o, a, Math.floor(time * 2) % 2 === 0, t, bg);
+      const blink = Math.floor(time * 2) % 2 === 0;
+      if (a >= 1) {
+        // Slide fully shown: it no longer changes (except the Hacker cursor blink) → draw once, then copy.
+        const key = k + '|' + (t.cursor ? blink : '');
+        if (!still || still.key !== key) {
+          if (!still) still = { c: makeCanvas(W, H) };
+          drawSlide(still.c.getContext('2d'), W, H, sl[k] || '', o, 1, blink, t, bg);
+          still.key = key;
+        }
+        ctx.drawImage(still.c, 0, 0);
+      } else drawSlide(ctx, W, H, sl[k] || '', o, a, blink, t, bg);
       if (o.progress) {
         ctx.fillStyle = 'rgba(255,255,255,0.25)';
         ctx.fillRect(0, H - bar, W, bar);

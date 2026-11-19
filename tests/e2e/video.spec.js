@@ -241,3 +241,22 @@ test.describe('export path robustness (TikTok stutter / slow export)', () => {
     await expect(page.locator('#tvOut .warn')).toContainText('không có WebCodecs', { timeout: 30000 });
   });
 });
+
+test.describe('file size (iPhone "Failed to download" on big files)', () => {
+  test('a size cap keeps the file under the limit; moving content stays well under the old 4.4 Mbps', async ({ page }, ti) => {
+    await openTab(page, 'imgvideo');
+    const c = await caps(page);
+    test.skip(!c.webcodecs, NO_EXPORT);
+    await page.setInputFiles('#ivImages', [fx('photo.jpg')]);
+    await page.selectOption('#ivFx', 'kenburns'); // every pixel moves every frame: worst case for size
+    await page.setInputFiles('#ivAudio', fx('tone.wav'));
+    await expect(page.locator('#ivAudioInfo')).toContainText('0:03');
+    await page.fill('#ivDur', '3');
+    // Cap 1.0 MB for 3 s (same ratio as 80 MB for ~4 min)
+    await page.evaluate(() => { VideoEngine.tuning.maxBytes = 1.0e6; });
+    const dl = await renderAndDownload(page, 'iv', ti);
+    const size = require('node:fs').statSync(dl.path).size;
+    expect(size, 'capped size').toBeLessThanOrEqual(1.0e6);
+    expectVideo(dl.path, { width: 1080, height: 1920, duration: 3 });
+  });
+});

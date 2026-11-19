@@ -18,24 +18,56 @@
     };
   }
 
+  /*
+   * Per-image work done ONCE instead of every frame (big photos are 12 MP: scaling them 30×/s made export slow):
+   *  - bg:   the blurred / coloured background already at W×H (per-frame cost = one 1:1 copy)
+   *  - main: the photo pre-scaled to its on-screen size × 1.1 (room for the Ken Burns zoom)
+   * Only the slides currently visible are kept (a 1080×1920 canvas is ~8 MB; phones have little memory).
+   */
+  const prepCache = new Map();
+  function prepared(im, k, s) {
+    const key = [k, s.W, s.H, s.fit, s.bg, im.url].join('|');
+    let e = prepCache.get(k);
+    if (e && e.key === key) return e;
+    if (e) { e.bg.width = e.bg.height = 0; if (e.main !== im.img) e.main.width = e.main.height = 0; }
+    const { W, H } = s;
+    const bg = makeCanvas(W, H);
+    const b = bg.getContext('2d');
+    b.fillStyle = s.bg;
+    b.fillRect(0, 0, W, H);
+    if (s.fit === 'blur') {
+      const bl = makeBlur(im.img, im.w, im.h, W, H);
+      b.imageSmoothingQuality = 'high';
+      drawImageFit(b, bl, bl.width, bl.height, 0, 0, W, H, 'cover', 1.05);
+      bl.width = bl.height = 0;
+    }
+    const fitScale = (s.fit === 'cover' ? Math.max(W / im.w, H / im.h) : Math.min(W / im.w, H / im.h)) * 1.1;
+    let main = im.img;
+    if (fitScale < 0.9) {
+      main = makeCanvas(im.w * fitScale, im.h * fitScale);
+      const m = main.getContext('2d');
+      m.imageSmoothingQuality = 'high';
+      m.drawImage(im.img, 0, 0, main.width, main.height);
+    }
+    e = { key, bg, main, mw: main.width || im.w, mh: main.height || im.h };
+    prepCache.set(k, e);
+    // keep only this slide and its neighbours
+    for (const [kk, v] of prepCache) {
+      if (Math.abs(kk - k) > 1) { v.bg.width = v.bg.height = 0; if (v.main !== images[kk]?.img && v.main.width) v.main.width = v.main.height = 0; prepCache.delete(kk); }
+    }
+    return e;
+  }
+
   function drawSlide(ctx, im, k, p, s) {
     const { W, H } = s;
-    ctx.fillStyle = s.bg;
-    ctx.fillRect(0, 0, W, H);
-    if (!im) return;
+    if (!im) { ctx.fillStyle = s.bg; ctx.fillRect(0, 0, W, H); return; }
+    const e = prepared(im, k, s);
+    ctx.drawImage(e.bg, 0, 0);
     const zoom = s.fx === 'kenburns' ? 1 + 0.1 * p : 1;
     // alternate pan direction per slide
     const ox = s.fx === 'kenburns' ? (k % 2 ? 0.5 - 0.15 * p : 0.5 + 0.15 * p) : 0.5;
-    if (s.fit === 'cover') {
-      drawImageFit(ctx, im.img, im.w, im.h, 0, 0, W, H, 'cover', zoom, Math.min(1, Math.max(0, ox)), 0.5);
-    } else {
-      if (s.fit === 'blur') {
-        if (!im.blur || im.blur._key !== W + 'x' + H) { im.blur = makeBlur(im.img, im.w, im.h, W, H); im.blur._key = W + 'x' + H; }
-        ctx.imageSmoothingQuality = 'high';
-        drawImageFit(ctx, im.blur, im.blur.width, im.blur.height, 0, 0, W, H, 'cover', 1.05);
-      }
-      drawImageFit(ctx, im.img, im.w, im.h, 0, 0, W, H, 'contain', zoom);
-    }
+    if (s.fit === 'cover') drawImageFit(ctx, e.main, e.mw, e.mh, 0, 0, W, H, 'cover', zoom, Math.min(1, Math.max(0, ox)), 0.5);
+    else drawImageFit(ctx, e.main, e.mw, e.mh, 0, 0, W, H, 'contain', zoom);
   }
 
   function makeDraw(s) {
@@ -86,7 +118,7 @@
       const x = document.createElement('button');
       x.textContent = '×';
       x.title = 'Bỏ ảnh';
-      x.onclick = () => { images.splice(i, 1); renderThumbs(); preview(); };
+      x.onclick = () => { images.splice(i, 1); prepCache.clear(); renderThumbs(); preview(); };
       d.appendChild(x);
       box.appendChild(d);
     });

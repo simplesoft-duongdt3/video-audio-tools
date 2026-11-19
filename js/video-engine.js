@@ -15,7 +15,9 @@ const VideoEngine = (() => {
   const tuning = {};
   const AAC_ENCODER_URL = 'https://cdn.jsdelivr.net/npm/@mediabunny/aac-encoder@1.65.2/dist/bundles/mediabunny-aac-encoder.min.mjs';
   const OfflineCtx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
-  const { bitrateFor } = Core;
+  /** iPhone Safari fails to save very large in-memory downloads ("Failed to download" around 100 MB). */
+  const maxBytes = () => (tuning.maxBytes != null ? tuning.maxBytes : IS_IOS ? 80e6 : 0);
+  const bitrateFor = (w, h, fps, duration = 0) => Core.bitrateFor(w, h, fps, duration, maxBytes());
 
   /** Yield to the event loop without setTimeout clamping (background tabs clamp timers to ≥1s). */
   const yieldUI = (() => {
@@ -108,7 +110,7 @@ const VideoEngine = (() => {
     const aborted = () => signal && signal.aborted;
 
     const output = new MB.Output({ format: new MB.Mp4OutputFormat({ fastStart: 'in-memory' }), target: new MB.BufferTarget() });
-    const video = new MB.CanvasSource(canvas, { codec: 'avc', bitrate: bitrateFor(w, h, fps), keyFrameInterval: 2, ...tuning, ...hints });
+    const video = new MB.CanvasSource(canvas, { codec: 'avc', bitrate: bitrateFor(w, h, fps, duration), keyFrameInterval: 2, ...tuning, ...hints });
     output.addVideoTrack(video, { frameRate: fps });
     const audioSrc = scene.audio ? new MB.AudioBufferSource({ codec: 'aac', bitrate: AUDIO_BITRATE }) : null;
     if (audioSrc) output.addAudioTrack(audioSrc);
@@ -208,7 +210,7 @@ const VideoEngine = (() => {
       dest.stream.getAudioTracks().forEach((t) => stream.addTrack(t));
     }
     const mimeType = pickRecorderMime();
-    const rec = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: bitrateFor(w, h, fps) });
+    const rec = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: bitrateFor(w, h, fps, duration) });
     const chunks = [];
     rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
     const done = new Promise((r) => (rec.onstop = r));
@@ -342,6 +344,14 @@ const VideoEngine = (() => {
       ${canShareFiles ? '<button data-a="share">Chia sẻ / Lưu vào Ảnh</button>' : ''}</div>
       <div class="hint" data-a="name"></div>${note ? `<div class="hint warn">${note}</div>` : ''}`;
     box.querySelector('[data-a=name]').textContent = name; // file names are user input
+    if (IS_IOS) {
+      // iPhone: the share sheet's "Save Video" writes straight to Photos and copes better with big files than downloads.
+      const tip = document.createElement('div');
+      tip.className = 'hint' + (blob.size > 80e6 ? ' warn' : '');
+      tip.textContent = (blob.size > 80e6 ? `⚠️ File lớn (${formatBytes(blob.size)}): Safari có thể báo "Không tải được". ` : '') +
+        'iPhone: bấm "Chia sẻ / Lưu vào Ảnh" → "Lưu video" để lưu thẳng vào Ảnh (ổn định hơn nút Tải).';
+      box.appendChild(tip);
+    }
     box.querySelector('[data-a=dl]').onclick = () => download(blob, name);
     const sh = box.querySelector('[data-a=share]');
     if (sh) sh.onclick = () => shareFile(blob, name);

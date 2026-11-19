@@ -231,8 +231,19 @@
   }
 
   /* ---------------- video ---------------- */
-  // Mostly still images / text: ~0.07 bits per pixel is plenty (≈4.4 Mbps at 1080×1920@30).
-  const bitrateFor = (w, h, fps) => Math.min(10e6, Math.round(w * h * fps * 0.07));
+  const AUDIO_BPS = 192000;
+  /**
+   * Video bitrate. ~0.05 bits per pixel (≈3.1 Mbps at 1080×1920@30) — TikTok/Reels re-encode to ~2–3 Mbps anyway.
+   * With `maxBytes`, the bitrate is lowered so a `duration`-second file (video + AAC audio) stays under that size
+   * (iPhone Safari fails to save very large in-memory downloads). Never below 0.8 Mbps.
+   */
+  function bitrateFor(w, h, fps, duration = 0, maxBytes = 0) {
+    let b = Math.min(8e6, Math.round(w * h * fps * 0.05));
+    if (duration > 0 && maxBytes > 0) b = Math.min(b, Math.floor((maxBytes * 8 * 0.9) / duration - AUDIO_BPS));
+    return Math.max(800e3, b);
+  }
+  /** Rough output size in bytes for a duration (video + audio + ~1% container overhead). */
+  const estimateBytes = (videoBps, duration, audio = true) => Math.round(((videoBps + (audio ? AUDIO_BPS : 0)) * duration / 8) * 1.01);
   const H264_CODECS = ['avc1.64002a', 'avc1.640028', 'avc1.4d002a', 'avc1.42e02a', 'avc1.640033', 'avc1.42e01f'];
   const even = (n) => Math.max(2, Math.round(n) - (Math.round(n) % 2));
 
@@ -354,7 +365,7 @@
     exifOrientation, orientationApp1, stripJpegBytes,
     graphemes, splitLongWord, wrap, clampLines, splitSlides,
     luminance, colorsFor, slideTiming, clipDuration, checkStart,
-    bitrateFor, H264_CODECS, even,
+    bitrateFor, estimateBytes, AUDIO_BPS, H264_CODECS, even,
     fft, monoWindow, bandEdges, spectrumBands, peaks, smoothBars, rms,
   };
 });

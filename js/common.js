@@ -107,7 +107,11 @@ function download(blob, name) {
   document.body.appendChild(a);
   a.click();
   a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 60000);
+  // iOS asks "Download?" and copies the file afterwards: revoking early makes it fail ("Failed to download").
+  // Keep the URL for 10 min (the previous one is released when the next download starts).
+  if (download._url) URL.revokeObjectURL(download._url);
+  download._url = url;
+  setTimeout(() => { URL.revokeObjectURL(url); if (download._url === url) download._url = null; }, 600000);
 }
 
 const canShareFiles = (() => {

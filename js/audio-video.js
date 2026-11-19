@@ -288,12 +288,23 @@
     const g = geometry(o.W, o.H);
     const an = makeAnalyzer(o);
     const nBands = o.W > o.H ? 56 : 40;
+    // Everything that never moves (background, blur, cover art, title) is drawn ONCE into this layer;
+    // each frame copies it and draws only the moving parts. (Was ~4× slower with a 12 MP cover.)
+    let still = null;
+    const stillLayer = () => {
+      if (still) return still;
+      still = makeCanvas(o.W, o.H);
+      const c = still.getContext('2d', { alpha: false });
+      drawBackground(c, o, g, im);
+      if (im) drawArt(c, o, g, im, 0, o.style === 'circle');
+      drawText(c, o, g);
+      return still;
+    };
     return (ctx, t) => {
       const { bands, wave, level } = an.at(t, o.style === 'circle' ? 48 : nBands);
-      drawBackground(ctx, o, g, im);
-      drawArt(ctx, o, g, im, level, o.style === 'circle');
+      ctx.drawImage(stillLayer(), 0, 0);
+      if (!im) drawArt(ctx, o, g, null, level, o.style === 'circle'); // the pulsing disc moves with the music
       if (o.style === 'circle') drawCircle(ctx, o, g, bands);
-      drawText(ctx, o, g);
       if (o.style === 'bars') drawBars(ctx, o, g, bands, false);
       else if (o.style === 'mirror') drawBars(ctx, o, g, bands, true);
       else if (o.style === 'wave') drawWave(ctx, o, g, wave);

@@ -190,8 +190,17 @@ test('checkStart', () => {
 });
 
 test('bitrateFor and even', () => {
-  assert.equal(C.bitrateFor(1080, 1920, 30), Math.round(1080 * 1920 * 30 * 0.07));
-  assert.equal(C.bitrateFor(3840, 2160, 60), 10e6);
+  assert.equal(C.bitrateFor(1080, 1920, 30), Math.round(1080 * 1920 * 30 * 0.05));
+  assert.equal(C.bitrateFor(3840, 2160, 60), 8e6, 'capped');
+  assert.equal(C.bitrateFor(64, 64, 24), 800e3, 'floor');
+  // iPhone size cap: a 3-minute and a 10-minute 1080×1920 video must fit in 80 MB
+  for (const dur of [180, 600]) {
+    const b = C.bitrateFor(1080, 1920, 30, dur, 80e6);
+    if (b > 800e3) assert.ok(C.estimateBytes(b, dur) <= 80e6, `${dur}s → ${C.estimateBytes(b, dur)} bytes`);
+  }
+  assert.equal(C.bitrateFor(1080, 1920, 30, 30, 80e6), C.bitrateFor(1080, 1920, 30), 'short videos keep full quality');
+  // the old default made 3 min ≈ 98 MB: the new default must stay under 80 MB even without the cap
+  assert.ok(C.estimateBytes(C.bitrateFor(1080, 1920, 30), 180) < 80e6);
   assert.equal(C.even(1081), 1080);
   assert.equal(C.even(1), 2);
   assert.ok(C.H264_CODECS.length >= 3 && C.H264_CODECS.every((c) => c.startsWith('avc1.')));
