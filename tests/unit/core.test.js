@@ -325,3 +325,38 @@ test('every slideshow filter option in index.html is implemented by Core.applyFi
   const opts = [...sel.matchAll(/value="([^"]+)"/g)].map((m) => m[1]);
   assert.deepEqual(opts.sort(), [...C.FILTERS].sort());
 });
+
+test('avGeometry: art, title block, visualizer and time bar never overlap, at every size × layout × style', () => {
+  const sizes = [[1080, 1920], [720, 1280], [1080, 1350], [1080, 1080], [1920, 1080], [1280, 720]];
+  for (const [W, H] of sizes) for (const layout of ['cover', 'top', 'minimal']) for (const style of ['bars', 'circle', 'overview']) {
+    const g = C.avGeometry(W, H, layout, style);
+    const id = `${W}×${H} ${layout} ${style}`;
+    const z = g.zones;
+    for (const k of ['text', 'vis', 'prog', 'art']) {
+      assert.ok(z[k][0] >= 0 && z[k][1] <= H, `${id}: ${k} ${z[k]} inside 0..${H}`);
+    }
+    assert.ok(z.artX[0] >= 0 && z.artX[1] <= W, `${id}: art (with rays) inside the width ${z.artX}`);
+    if (z.colX) {
+      // landscape: art on the left, the column on the right
+      assert.ok(z.artX[1] <= z.colX[0], `${id}: art ${z.artX} left of column ${z.colX}`);
+      assert.ok(z.colX[1] <= W);
+      for (const [a, b] of [['text', 'vis'], ['vis', 'prog']]) assert.ok(z[a][1] <= z[b][0], `${id}: ${a} ${z[a]} above ${b} ${z[b]}`);
+    } else {
+      // stacked: sort by top, each zone ends before the next starts (minimal: the disc lives inside the visualizer)
+      const keys = ['text', 'vis', 'prog', ...(g.noArt ? [] : ['art'])].sort((a, b) => z[a][0] - z[b][0]);
+      for (let i = 1; i < keys.length; i++) assert.ok(z[keys[i - 1]][1] <= z[keys[i]][0], `${id}: ${keys[i - 1]} ${z[keys[i - 1]]} overlaps ${keys[i]} ${z[keys[i]]}`);
+      if (g.noArt) assert.ok(z.art[0] >= z.vis[0] - 1 && z.art[1] <= z.vis[1] + 1, `${id}: disc inside the visualizer zone`);
+    }
+    assert.ok(g.A >= 40 * g.u, `${id}: art not degenerate (${g.A})`);
+  }
+  // the 9:16 cover layout keeps its big art
+  assert.ok(C.avGeometry(1080, 1920, 'cover', 'bars').A >= 600);
+});
+
+test('friendlyError: decode failures vs encoder failures are told apart', () => {
+  assert.match(C.friendlyError('Không giải mã được "a.mp3"').title, /audio/);
+  assert.match(C.friendlyError('Unable to decode audio data').title, /audio/);
+  // VideoEncoder raises EncodingError: that is the video encoder, not the user's audio file
+  assert.match(C.friendlyError('Encoding error.', 'EncodingError').title, /mã hoá/);
+  assert.doesNotMatch(C.friendlyError('x', 'EncodingError').title, /audio/);
+});

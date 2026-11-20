@@ -10,7 +10,7 @@
   /* ---------------- templates ---------------- */
   /** Look = what a template sets that has no control: title font/colour/position and cinema bars. */
   const DEFAULT_LOOK = { font: 'Be Vietnam Pro', weight: 800, italic: false, upper: false, color: '#ffffff', pos: 'bottom', size: 72, shadow: true, box: null, bars: false };
-  const T = (id, name, cat, set, look) => ({ id, name, cat, set: { ivProgress: false, ivBg: '#000000', ...set }, style: look });
+  const T = (id, name, cat, set, look) => ({ id, name, cat, set, style: look }); // only what the look needs: the user's other choices stay
   const IV_TEMPLATES = [
     T('basic', 'Cơ bản', 'Phổ biến', { ivFit: 'blur', ivFx: 'kenburns', ivTrans: 'fade', ivFilter: 'none' }, {}),
     T('memory', 'Kỷ niệm', 'Gia đình', { ivFit: 'blur', ivFx: 'kenburns', ivTrans: 'fade', ivFilter: 'warm' }, { font: 'Lobster', weight: 400, size: 92 }),
@@ -42,7 +42,7 @@
 
   /** Polaroid card around a photo of iw×ih, fitted in the frame. */
   function polaroid(iw, ih, W, H) {
-    const maxW = W * 0.8, maxH = H * (W > H ? 0.78 : 0.6);
+    const maxW = W * 0.8, maxH = H * (W > H ? 0.62 : 0.6); // leaves room for a bottom title in landscape
     const pad0 = Math.min(maxW, maxH) * 0.045;
     const sc = Math.min((maxW - 2 * pad0) / iw, (maxH - pad0 - pad0 * 3.5) / ih);
     const pw = iw * sc, ph = ih * sc;
@@ -68,7 +68,7 @@
     const key = [k, s.W, s.H, s.fit, s.bg, s.filter, im.url].join('|');
     let e = cache.get(k);
     if (e && e.key === key) return e;
-    if (e) { e.bg.width = e.bg.height = 0; if (e.main !== im.img) e.main.width = e.main.height = 0; }
+    if (e) { e.bg.width = e.bg.height = 0; if (e.ownMain) e.main.width = e.main.height = 0; } // never wipe a canvas we didn't create (the sample photo)
     const { W, H } = s;
     const bg = makeCanvas(W, H);
     const b = bg.getContext('2d');
@@ -93,12 +93,12 @@
       m.drawImage(im.img, 0, 0, main.width, main.height);
       filtered(main, s.filter);
     }
-    e = { key, bg, main, mw: main.width || im.w, mh: main.height || im.h, pol };
+    e = { key, bg, main, ownMain: main !== im.img, mw: main.width || im.w, mh: main.height || im.h, pol };
     cache.set(k, e);
     if (cache === prepCache) {
       // keep only this slide and its neighbours
       for (const [kk, v] of cache) {
-        if (Math.abs(kk - k) > 1) { v.bg.width = v.bg.height = 0; if (v.main !== images[kk]?.img && v.main.width) v.main.width = v.main.height = 0; cache.delete(kk); }
+        if (Math.abs(kk - k) > 1) { v.bg.width = v.bg.height = 0; if (v.ownMain) v.main.width = v.main.height = 0; cache.delete(kk); }
       }
     }
     return e;
@@ -113,7 +113,7 @@
     if (e.pol) {
       const { cw, ch, pw, ph, pad } = e.pol;
       ctx.save();
-      ctx.translate(W / 2, H * 0.46);
+      ctx.translate(W / 2, H * (W > H ? 0.42 : 0.46));
       ctx.rotate((k % 2 ? -1 : 1) * 0.035);
       const z = 1 + (zoom - 1) * 0.4; // the card itself moves only a little
       ctx.scale(z, z);
@@ -141,14 +141,20 @@
     const L = s.look || DEFAULT_LOOK;
     const { W, H } = s;
     const u = Math.min(W, H) / 1080;
-    const fs = Math.round(L.size * u);
+    const text = (L.upper ? s.title.toUpperCase() : s.title).normalize('NFC');
     ctx.save();
     ctx.globalAlpha = alpha;
-    ctx.font = fontOf(L, fs);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    const text = (L.upper ? s.title.toUpperCase() : s.title).normalize('NFC');
-    const lines = Core.clampLines(ctx, text, W * 0.84, 2);
+    // shrink (down to 60%) until the title fits in 2 lines, then cut with "…" only if it still doesn't
+    let fs = Math.round(L.size * u), lines;
+    for (;;) {
+      ctx.font = fontOf(L, fs);
+      lines = Core.clampLines(ctx, text, W * 0.84, 2);
+      const cut = lines.length && /…$/.test(lines[lines.length - 1]) && !text.endsWith('…');
+      if (!cut || fs <= L.size * u * 0.6) break;
+      fs = Math.round(fs * 0.92);
+    }
     const lh = fs * 1.25;
     let cy = L.pos === 'top' ? H * (L.bars ? 0.17 : 0.12) : L.pos === 'center' ? H * 0.5 : H * 0.84;
     if (L.bars && L.pos === 'bottom') cy = H - barH(s) / 2; // subtitle inside the cinema bar
@@ -234,7 +240,7 @@
     const sc = scene();
     canvas.width = sc.width;
     canvas.height = sc.height;
-    if (images.length) sc.draw(canvas.getContext('2d'), Math.min(0.01, sc.duration));
+    if (images.length) sc.draw(canvas.getContext('2d'), Math.min(0.01, sc.duration), true); // still frame: title fully visible
     else {
       // no photos yet: show the chosen template on a sample photo
       const s = settings();
@@ -253,7 +259,7 @@
       const x = document.createElement('button');
       x.textContent = '×';
       x.title = 'Bỏ ảnh';
-      x.onclick = () => { images.splice(i, 1); prepCache.clear(); renderThumbs(); preview(); };
+      x.onclick = () => { images.splice(i, 1); prepCache.clear(); thumbCache.clear(); renderThumbs(); preview(); picker.refresh(); };
       d.appendChild(x);
       box.appendChild(d);
     });
@@ -281,8 +287,9 @@
     }
   });
 
+  const previewSoon = oncePerFrame(preview);
   ['ivSize', 'ivFit', 'ivBg', 'ivFx', 'ivTrans', 'ivFilter', 'ivTitle', 'ivProgress', 'ivStart', 'ivDur', 'ivFps'].forEach((id) =>
-    $(id).addEventListener('input', preview)
+    $(id).addEventListener('input', previewSoon)
   );
   $('ivTitle').addEventListener('change', () => ensureFonts().then(preview));
 

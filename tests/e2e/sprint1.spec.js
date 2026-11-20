@@ -5,7 +5,7 @@ const { writeFileSync } = require('node:fs');
 const { fx, probe, hasFfprobe, openTab, renderAndDownload, segmentLevel, codecs, NO_AAC, NO_EXPORT } = require('./helpers');
 
 /** Replace the clipboard writer with a spy (works on every engine, no permission prompts). */
-const spyCopy = (page) => page.evaluate(() => { window.__copied = null; window.copyText = async (t) => { window.__copied = t; return true; }; });
+const spyCopy = (page) => page.evaluate(() => { window.__copied = null; window.copyText = async (t) => { window.__copied = await t; return true; }; });
 const copied = (page) => page.evaluate(() => window.__copied || '');
 
 test.describe('estimate before export', () => {
@@ -42,7 +42,13 @@ test.describe('estimate before export', () => {
     await expect(iv).toContainText('đã giảm chất lượng');
 
     await page.click('#tabs button[data-tab="textvideo"]');
-    await expect(page.locator('#tab-textvideo [data-role=estimate]')).toContainText('Ước tính');
+    const tv = page.locator('#tab-textvideo [data-role=estimate]');
+    await expect(tv).toContainText('Ước tính');
+    await page.fill('#tvSlideDur', '20');
+    const noAudio = await tv.textContent();
+    await page.setInputFiles('#tvAudio', fx('tone.mp3'));
+    await expect(page.locator('#tvAudioInfo')).toContainText('slide');
+    await expect(tv, 'the estimate follows the audio length once it is loaded').not.toHaveText(noAudio);
   });
 });
 
@@ -165,7 +171,7 @@ test.describe('audio on every export path (streamed, faded, no gaps)', () => {
     await expect(page.locator('#avAudioInfo')).toContainText('0:03');
     await page.fill('#avDur', '2');
     const dl = await renderAndDownload(page, 'av', ti);
-    const mid = segmentLevel(dl.path, 0.5, 0.9), end = segmentLevel(dl.path, 1.92, 0.07);
+    const mid = segmentLevel(dl.path, 0.5, 0.9), end = segmentLevel(dl.path, 1.85, 0.1); // not right at EOF: ffmpeg versions seek differently
     expect(end, `end ${end} dB vs middle ${mid} dB`).toBeLessThan(mid - 8);
   });
 

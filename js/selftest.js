@@ -187,7 +187,7 @@ const DebugInfo = (() => {
     return lines.join('\n');
   }
   async function copy(extra) {
-    const text = await report(extra);
+    const text = report(extra); // not awaited: the clipboard write must start inside the tap (Safari)
     if (await copyText(text)) toast('Đã sao chép — hãy dán vào tin nhắn gửi cho chúng tôi', 4000);
     return text;
   }

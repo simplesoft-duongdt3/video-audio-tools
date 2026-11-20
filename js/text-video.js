@@ -14,12 +14,12 @@
 
   const TEMPLATES = [
     {
-      id: 'classic', cat: 'Phổ biến', name: 'Classic',
+      id: 'classic', cat: 'Phổ biến', name: 'Cơ bản',
       bg: (c, W, H) => linear(c, W, H, ['#0f0c29', '#302b63', '#24243e']),
       font: 'Be Vietnam Pro', weight: 800, color: '#fff', stroke: { color: '#000', w: 0.14 }, lineHeight: 1.25,
     },
     {
-      id: 'caption', cat: 'Phổ biến', name: 'Caption box',
+      id: 'caption', cat: 'Phổ biến', name: 'Hộp chữ',
       bg: (c, W, H) => linear(c, W, H, ['#ff9a8b', '#ff6a88', '#ff99ac'], 120),
       font: 'Be Vietnam Pro', weight: 800, color: '#111', box: { fill: '#fff', pad: 0.32, radius: 0.22 }, lineHeight: 1.42,
     },
@@ -39,22 +39,22 @@
       font: 'Montserrat', weight: 900, color: '#fff', shadow: { color: '#0ff', blur: 0.45 }, lineHeight: 1.25,
     },
     {
-      id: 'quote', cat: 'Trích dẫn', name: 'Quote',
+      id: 'quote', cat: 'Trích dẫn', name: 'Trích dẫn sáng',
       bg: (c, W, H) => solid(c, W, H, '#f4eee4'),
       font: 'Playfair Display', weight: 700, italic: true, color: '#2b2b2b', align: 'left', lineHeight: 1.3, quote: '#c9a27a', handleColor: '#7a6a58',
     },
     {
-      id: 'bold', cat: 'Nổi bật', name: 'Bold vàng',
+      id: 'bold', cat: 'Nổi bật', name: 'Vàng nổi bật',
       bg: (c, W, H) => solid(c, W, H, '#ffd400'),
       font: 'Montserrat', weight: 900, color: '#111', upper: true, lineHeight: 1.15, handleColor: '#111',
     },
     {
-      id: 'sunset', cat: 'Phổ biến', name: 'Sunset',
+      id: 'sunset', cat: 'Phổ biến', name: 'Hoàng hôn',
       bg: (c, W, H) => linear(c, W, H, ['#f12711', '#f5af19'], 200),
       font: 'Be Vietnam Pro', weight: 800, color: '#fff', shadow: { color: 'rgba(0,0,0,0.45)', blur: 0.2, y: 0.06 }, lineHeight: 1.25,
     },
     {
-      id: 'ocean', cat: 'Tối giản', name: 'Ocean',
+      id: 'ocean', cat: 'Tối giản', name: 'Đại dương',
       bg: (c, W, H) => linear(c, W, H, ['#0f2027', '#203a43', '#2c5364']),
       font: 'Be Vietnam Pro', weight: 700, color: '#fff', box: { fill: 'rgba(0,0,0,0.55)', pad: 0.3, radius: 0.15 }, lineHeight: 1.45,
     },
@@ -77,9 +77,9 @@
       id: 'news', cat: 'Tin tức', name: 'Tin nóng',
       bg: (c, W, H) => {
         linear(c, W, H, ['#1a0006', '#4a0010'], 90);
-        c.fillStyle = '#e11d48'; c.fillRect(0, H * 0.1, W, H * 0.055);
-        c.fillStyle = '#fff'; c.font = `900 ${Math.round(H * 0.032)}px Montserrat, sans-serif`;
-        c.textBaseline = 'middle'; c.textAlign = 'left'; c.fillText('● TIN NÓNG', W * 0.06, H * 0.1275);
+        c.fillStyle = '#e11d48'; c.fillRect(0, H * 0.1, W, Math.max(H * 0.055, Math.min(W, H) * 0.08));
+        c.fillStyle = '#fff'; c.font = `900 ${Math.round(Math.min(W, H) * 0.05)}px Montserrat, sans-serif`;
+        c.textBaseline = 'middle'; c.textAlign = 'left'; c.fillText('● TIN NÓNG', W * 0.06, H * 0.1 + Math.max(H * 0.055, Math.min(W, H) * 0.08) / 2);
       },
       font: 'Montserrat', weight: 900, color: '#fff', upper: true, box: { fill: 'rgba(225,29,72,0.92)', pad: 0.28, radius: 0.05 }, lineHeight: 1.4,
     },
@@ -120,7 +120,7 @@
       font: 'Be Vietnam Pro', weight: 800, color: '#3b2f4a', lineHeight: 1.3, handleColor: '#3b2f4a',
     },
     {
-      id: 'clean', cat: 'Tối giản', name: 'Trắng gọn',
+      id: 'clean', cat: 'Tối giản', name: 'Tối giản sáng',
       bg: (c, W, H) => solid(c, W, H, '#fafafa'),
       font: 'Be Vietnam Pro', weight: 600, color: '#111', align: 'left', lineHeight: 1.35, handleColor: '#666',
     },
@@ -130,7 +130,7 @@
       font: 'Lobster', weight: 400, color: '#fff', shadow: { color: 'rgba(0,0,0,0.35)', blur: 0.18, y: 0.05 }, lineHeight: 1.35,
     },
     {
-      id: 'darkquote', cat: 'Trích dẫn', name: 'Quote tối',
+      id: 'darkquote', cat: 'Trích dẫn', name: 'Trích dẫn tối',
       bg: (c, W, H) => solid(c, W, H, '#121212'),
       font: 'Playfair Display', weight: 700, italic: true, color: '#f5f5f5', align: 'left', lineHeight: 1.3, quote: '#d4af37', handleColor: '#d4af37',
     },
@@ -453,7 +453,8 @@
     picker = Templates.mount({
       box: $('tvTemplates'),
       key: 'tv',
-      builtins: TEMPLATES.map((t) => ({ id: t.id, name: t.name, cat: t.cat, set: {}, style: { base: t.id } })),
+      // built-ins reset what a saved template may have changed (font, alignment, background)
+      builtins: TEMPLATES.map((t) => ({ id: t.id, name: t.name, cat: t.cat, set: { tvFont: '', tvAlign: '', tvBgMode: 'tpl' }, style: { base: t.id } })),
       thumb: (t, ctx, W, H) => drawSlide(ctx, W, H, 'Xin chào\nTikTok', optsFrom(t.set || {}), 1, true, baseOf(t), null),
       apply: (t) => { tpl = baseOf(t); preview(); },
       controls: TV_CONTROLS,

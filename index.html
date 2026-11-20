@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600;800&family=Montserrat:wght@700;900&family=Playfair+Display:ital,wght@0,700;1,700&family=Lobster&family=Roboto+Mono:wght@700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css">
-<link rel="stylesheet" href="assets/style.css?v=77e6198b8b">
+<link rel="stylesheet" href="assets/style.css?v=b2e24dbd9e">
 <!-- Mediabunny (MP4 + H.264/AAC encoding) is loaded on demand as an ES module; the AAC extension imports "mediabunny" too. -->
 <script type="importmap">{ "imports": { "mediabunny": "https://cdn.jsdelivr.net/npm/mediabunny@1.65.2/dist/bundles/mediabunny.min.mjs" } }</script>
 </head>
@@ -173,10 +173,10 @@
       <div class="row tight">
         <label>Cách đặt ảnh
           <select id="ivFit">
-            <option value="blur">Vừa khung + nền mờ</option>
-            <option value="cover">Phủ kín (cắt bớt)</option>
-            <option value="contain">Vừa khung + nền màu</option>
-            <option value="polaroid">Ảnh Polaroid</option>
+            <option value="blur">Nền mờ</option>
+            <option value="cover">Phủ kín</option>
+            <option value="contain">Nền màu</option>
+            <option value="polaroid">Polaroid</option>
           </select>
         </label>
         <label>Màu nền <input type="color" id="ivBg" value="#000000"></label>
@@ -184,7 +184,7 @@
       <div class="row tight">
         <label>Hiệu ứng
           <select id="ivFx">
-            <option value="kenburns">Zoom chậm (Ken Burns)</option>
+            <option value="kenburns">Phóng chậm</option>
             <option value="zoomout">Thu nhỏ dần</option>
             <option value="none">Tĩnh</option>
           </select>
@@ -214,7 +214,7 @@
 
 <!-- ============ TEXT + AUDIO -> VIDEO ============ -->
 <section class="panel" id="tab-textvideo">
-  <h2>Text (template TikTok) + Audio → Video / Ảnh</h2>
+  <h2>Text + Audio → Video / Ảnh</h2>
   <p class="hint">Mỗi đoạn cách nhau bởi <b>một dòng trống</b> là một slide. Thời lượng audio được chia đều cho các slide (hoặc đặt số giây riêng).</p>
   <div class="split">
     <div class="controls">
@@ -225,12 +225,12 @@ Mỗi ngày chỉ cần đọc 10 trang sách, một năm bạn đọc được 
 
 Bắt đầu từ hôm nay nhé! 📚</textarea>
       </label>
-      <div class="glabel">Template</div>
+      <div class="glabel">Mẫu</div>
       <div class="tpl-picker" id="tvTemplates"></div>
       <div class="row tight">
         <label>Font
           <select id="tvFont">
-            <option value="">Theo template</option>
+            <option value="">Theo mẫu</option>
             <option>Be Vietnam Pro</option>
             <option>Montserrat</option>
             <option>Playfair Display</option>
@@ -242,7 +242,7 @@ Bắt đầu từ hôm nay nhé! 📚</textarea>
       </div>
       <div class="row tight">
         <label>Căn lề
-          <select id="tvAlign"><option value="">Theo template</option><option value="center">Giữa</option><option value="left">Trái</option></select>
+          <select id="tvAlign"><option value="">Theo mẫu</option><option value="center">Giữa</option><option value="left">Trái</option></select>
         </label>
         <label>Hiệu ứng chữ
           <select id="tvAnim">
@@ -257,7 +257,7 @@ Bắt đầu từ hôm nay nhé! 📚</textarea>
       </div>
       <div class="row tight">
         <label>Nền tuỳ chỉnh
-          <select id="tvBgMode"><option value="tpl">Theo template</option><option value="color">Màu</option><option value="image">Ảnh</option></select>
+          <select id="tvBgMode"><option value="tpl">Theo mẫu</option><option value="color">Màu</option><option value="image">Ảnh</option></select>
         </label>
         <label>Màu <input type="color" id="tvBgColor" value="#111111"></label>
       </div>
@@ -385,16 +385,16 @@ Bắt đầu từ hôm nay nhé! 📚</textarea>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/1.0.11/pako.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/upng-js@2.1.0/UPNG.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js" defer></script>
-<script src="js/core.js?v=16f4a06f4b"></script>
-<script src="js/common.js?v=4354e6ea69"></script>
+<script src="js/core.js?v=b2938dc46e"></script>
+<script src="js/common.js?v=e9cb0c0cd8"></script>
 <script src="js/convert.js?v=a892107986"></script>
 <script src="js/compress.js?v=c9854c750d"></script>
 <script src="js/editor.js?v=5a58c6ba54"></script>
-<script src="js/templates.js?v=4ea538d508"></script>
-<script src="js/video-engine.js?v=29eb28fb3a"></script>
-<script src="js/image-video.js?v=cab2f5aa4b"></script>
-<script src="js/text-video.js?v=fcc26f81d8"></script>
-<script src="js/audio-video.js?v=f9be716491"></script>
-<script src="js/selftest.js?v=25867d8eb2"></script>
+<script src="js/templates.js?v=efe79e3f4f"></script>
+<script src="js/video-engine.js?v=5ff0230296"></script>
+<script src="js/image-video.js?v=9d9ca9d95d"></script>
+<script src="js/text-video.js?v=bba5c217f0"></script>
+<script src="js/audio-video.js?v=895756b0ef"></script>
+<script src="js/selftest.js?v=b54a546883"></script>
 </body>
 </html>

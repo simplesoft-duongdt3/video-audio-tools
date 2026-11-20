@@ -209,8 +209,20 @@ const DebugLog = (() => {
   return { items, push };
 })();
 
-/** Copy text to the clipboard; if the browser refuses, show it in a box to copy by hand. → true if copied */
-async function copyText(text) {
+/**
+ * Copy text (or a Promise of text) to the clipboard; if the browser refuses, show it in a box to copy by hand.
+ * → true if copied. Call it directly from the tap: Safari only allows clipboard writes inside the user gesture,
+ * so the write starts at once with a ClipboardItem whose content is still being built.
+ */
+async function copyText(src) {
+  const textP = Promise.resolve(src);
+  if (window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
+    try {
+      await navigator.clipboard.write([new ClipboardItem({ 'text/plain': textP.then((t) => new Blob([t], { type: 'text/plain' })) })]);
+      return true;
+    } catch (_) {}
+  }
+  const text = await textP;
   try { await navigator.clipboard.writeText(text); return true; } catch (_) {}
   const ta = document.createElement('textarea');
   ta.value = text;
@@ -218,10 +230,11 @@ async function copyText(text) {
   ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
   document.body.appendChild(ta);
   ta.select();
+  ta.setSelectionRange(0, text.length); // iOS ignores select() on a read-only field
   let ok = false;
   try { ok = document.execCommand('copy'); } catch (_) {}
   ta.remove();
-  if (ok) return true;
+  if (ok && !IS_IOS) return true; // iOS may report success with nothing copied: show the text instead
   const d = document.createElement('dialog');
   d.className = 'copybox';
   d.innerHTML = '<p>Trình duyệt không cho tự sao chép. Hãy chọn hết đoạn dưới đây và sao chép:</p><textarea readonly rows="12"></textarea><div class="row"><button class="primary">Đóng</button></div>';
@@ -231,6 +244,16 @@ async function copyText(text) {
   if (d.showModal) d.showModal(); else d.setAttribute('open', '');
   d.querySelector('textarea').select();
   return false;
+}
+
+/** Run `fn` at most once per animation frame (a template sets ~6 controls at once → one redraw). */
+function oncePerFrame(fn) {
+  let queued = false;
+  return () => {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(() => { queued = false; fn(); });
+  };
 }
 
 /* ---------- file inputs + drag & drop ---------- */
@@ -297,11 +320,11 @@ function makeBlur(img, iw, ih, W, H, darken = 0.35) {
 
 /* ---------- video output sizes (TikTok first) ---------- */
 const VIDEO_SIZES = [
-  { id: '1080x1920', label: '9:16 TikTok / Reels 1080×1920', w: 1080, h: 1920 },
-  { id: '720x1280', label: '9:16 TikTok nhẹ 720×1280', w: 720, h: 1280 },
-  { id: '1080x1350', label: '4:5 Instagram 1080×1350', w: 1080, h: 1350 },
-  { id: '1080x1080', label: '1:1 Vuông 1080×1080', w: 1080, h: 1080 },
-  { id: '1920x1080', label: '16:9 YouTube 1920×1080', w: 1920, h: 1080 },
+  { id: '1080x1920', label: '9:16 TikTok · 1080p', w: 1080, h: 1920 },
+  { id: '720x1280', label: '9:16 nhẹ · 720p', w: 720, h: 1280 },
+  { id: '1080x1350', label: '4:5 Instagram', w: 1080, h: 1350 },
+  { id: '1080x1080', label: '1:1 Vuông', w: 1080, h: 1080 },
+  { id: '1920x1080', label: '16:9 YouTube', w: 1920, h: 1080 },
 ];
 document.querySelectorAll('.size-select').forEach((sel) => {
   sel.innerHTML = VIDEO_SIZES.map((s) => `<option value="${s.id}">${s.label}</option>`).join('');

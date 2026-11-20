@@ -49,7 +49,7 @@ test('self test: every required check passes', async ({ page }, testInfo) => {
   const failedRequired = results.filter((r) => r.level === 'required' && r.status !== 'pass' && !envLimited(r));
   expect(failedRequired).toEqual([]);
   // "Sao chép kết quả": the copied report carries every check + device info (what users send us)
-  await page.evaluate(() => { window.copyText = async (t) => { window.__copied = t; return true; }; });
+  await page.evaluate(() => { window.copyText = async (t) => { window.__copied = await t; return true; }; });
   await page.click('#stCopy');
   await expect.poll(() => page.evaluate(() => window.__copied || '')).toContain('Tự kiểm tra:');
   const copied = await page.evaluate(() => window.__copied);

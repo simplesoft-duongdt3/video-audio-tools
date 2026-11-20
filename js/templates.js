@@ -6,7 +6,7 @@
  * "Mẫu của tôi": the user's current settings saved as a template in localStorage (this browser only).
  */
 const Templates = (() => {
-  const MINE = 'Của tôi';
+  const MINE = 'Mẫu của tôi';
   const load = (key) => { try { return JSON.parse(localStorage.getItem('vat.tpl.' + key) || '[]'); } catch (_) { return []; } };
   const save = (key, list) => { try { localStorage.setItem('vat.tpl.' + key, JSON.stringify(list)); return true; } catch (_) { return false; } };
 
@@ -41,42 +41,51 @@ const Templates = (() => {
       active = t.id;
       for (const [id, v] of Object.entries(t.set || {})) if (!skipControl(id, t)) setControl(id, v);
       apply(t);
-      render();
+      // only the highlight changes: re-drawing every thumbnail on each tap is slow on phones
+      box.querySelectorAll('[data-tpl]').forEach((b) => {
+        b.classList.toggle('active', b.dataset.tpl === active);
+        b.setAttribute('aria-pressed', b.dataset.tpl === active);
+      });
     }
 
+    /** One template: a thumbnail button, its name under it, and (own templates) a separate delete button. */
     function card(t) {
+      const wrap = document.createElement('div');
+      wrap.className = 'tcard';
       const b = document.createElement('button');
       b.type = 'button';
       b.className = t.id === active ? 'active' : '';
       b.dataset.tpl = t.id;
-      b.title = t.name;
       b.setAttribute('aria-pressed', t.id === active);
+      b.setAttribute('aria-label', 'Mẫu ' + t.name);
       const c = makeCanvas(180, 320);
       const ctx = c.getContext('2d');
       ctx.setTransform(1 / 3, 0, 0, 1 / 3, 0, 0); // drawn at 540×960, shown at 180×320
       try { thumb(t, ctx, 540, 960); } catch (e) { console.warn('template thumbnail', t.id, e); }
       b.appendChild(c);
-      const s = document.createElement('span');
-      s.textContent = t.name;
-      b.appendChild(s);
       b.onclick = () => use(t);
+      const s = document.createElement('span');
+      s.className = 'tname';
+      s.textContent = t.name;
+      s.setAttribute('aria-hidden', 'true');
+      wrap.append(b, s);
       if (t.cat === MINE) {
-        const x = document.createElement('i');
-        x.className = 'del';
+        const x = document.createElement('button');
+        x.type = 'button';
+        x.className = 'tdel';
+        x.dataset.del = t.id;
         x.textContent = '×';
         x.title = 'Xoá mẫu này';
-        x.setAttribute('role', 'button');
         x.setAttribute('aria-label', 'Xoá mẫu ' + t.name);
-        x.onclick = (e) => {
-          e.stopPropagation();
+        x.onclick = () => {
           if (!confirm(`Xoá mẫu "${t.name}"?`)) return;
           save(key, load(key).filter((m) => m.id !== t.id));
           if (active === t.id) active = builtins[0].id;
           render();
         };
-        b.appendChild(x);
+        wrap.appendChild(x);
       }
-      return b;
+      return wrap;
     }
 
     function render() {
@@ -84,6 +93,10 @@ const Templates = (() => {
       const cats = ['Tất cả', ...new Set(list.map((t) => t.cat).filter(Boolean))];
       if (!cats.includes(cat)) cat = 'Tất cả';
       box.innerHTML = '';
+      const hint = document.createElement('p');
+      hint.className = 'hint tpl-hint';
+      hint.textContent = 'Chọn mẫu để điền sẵn cài đặt — vẫn chỉnh được mọi thứ bên dưới.';
+      box.appendChild(hint);
       if (cats.length > 2) {
         const chips = document.createElement('div');
         chips.className = 'chips';
@@ -103,9 +116,10 @@ const Templates = (() => {
       for (const t of list) if (cat === 'Tất cả' || t.cat === cat) grid.appendChild(card(t));
       const add = document.createElement('button');
       add.type = 'button';
-      add.className = 'add';
+      add.className = 'tadd';
       add.dataset.role = 'save-template';
-      add.innerHTML = '<b>＋</b><span>Lưu cài đặt hiện tại thành mẫu</span>';
+      add.innerHTML = '<b aria-hidden="true">＋</b><span>Lưu thành mẫu của tôi</span>';
+      add.title = 'Lưu cài đặt hiện tại thành mẫu để dùng lại';
       add.onclick = () => {
         const mine = load(key);
         const name = (prompt('Tên mẫu:', `Mẫu của tôi ${mine.length + 1}`) || '').trim();

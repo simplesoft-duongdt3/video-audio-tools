@@ -12,7 +12,7 @@
   /* ---------------- templates ---------------- */
   /** Look = what a template sets that has no control: fonts, text colour, background gradient, layout. */
   const DEFAULT_LOOK = { font: 'Be Vietnam Pro', weight: 800, italic: false, ink: '#ffffff', dim: 'rgba(255,255,255,0.28)', stops: ['#1b1036', '#07070c'], angle: 72, layout: 'cover', glow: true };
-  const T = (id, name, cat, set, look) => ({ id, name, cat, set: { avProgress: true, avBgColor: '#101018', ...set }, style: look });
+  const T = (id, name, cat, set, look) => ({ id, name, cat, set, style: look }); // only what the look needs: the user's other choices stay
   const AV_TEMPLATES = [
     T('neon', 'TikTok Neon', 'Phổ biến', { avStyle: 'bars', avColor1: '#25f4ee', avColor2: '#fe2c55', avBgMode: 'gradient' }, {}),
     T('lofi', 'Lo-fi', 'Chill', { avStyle: 'mirror', avColor1: '#c084fc', avColor2: '#f9a8d4', avBgMode: 'gradient' }, { stops: ['#2e1065', '#831843'], angle: 120 }),
@@ -47,39 +47,8 @@
   }
 
   /* ---------------- geometry ---------------- */
-  function geometry(W, H, layout = 'cover') {
-    const u = Math.min(W, H) / 1080;
-    if (layout === 'minimal') {
-      // no cover: a big visualizer in the middle, title under it (the circle style still gets its disc)
-      const land = W > H;
-      const vx = Math.round(W * (land ? 0.1 : 0.08)), vw = W - 2 * vx;
-      const vy = H * (land ? 0.26 : 0.36), vh = H * (land ? 0.3 : 0.2);
-      const A = Math.round(Math.min(W, H) * (land ? 0.5 : 0.46));
-      return { u, A, ax: Math.round((W - A) / 2), ay: Math.round(vy + vh / 2 - A / 2), noArt: true, tx: vx, tw: vw, align: 'center',
-        titleY: vy + vh + H * (land ? 0.16 : 0.12), vx, vw, vy, vh, py: H * (land ? 0.86 : 0.84) };
-    }
-    if (layout === 'top' && H >= W) {
-      // podcast: title first, then the art, then the visualizer
-      const A = Math.round(Math.min(W * 0.5, H * 0.28));
-      const titleY = H * 0.12, ay = Math.round(H * 0.24), ax = Math.round((W - A) / 2);
-      const vx = Math.round(W * 0.08), vw = W - 2 * vx, vy = ay + A + H * 0.07, vh = H * 0.14;
-      return { u, A, ax, ay, tx: W * 0.08, tw: W * 0.84, align: 'center', titleY, vx, vw, vy, vh, py: vy + vh + H * 0.06 };
-    }
-    if (W > H) {
-      // landscape: cover art on the left, everything else in a right-hand column
-      const A = Math.round(H * 0.6);
-      const ax = Math.round(W * 0.07), ay = Math.round((H - A) / 2);
-      const cx = ax + A + Math.round(90 * u), cw = W - cx - Math.round(W * 0.07);
-      return { u, A, ax, ay, tx: cx, tw: cw, align: 'left', titleY: H * 0.22, vx: cx, vw: cw, vy: H * 0.46, vh: H * 0.22, py: H * 0.8 };
-    }
-    const A = Math.round(Math.min(W * 0.64, H * 0.33));
-    const ax = Math.round((W - A) / 2), ay = Math.round(H * 0.12);
-    const titleY = ay + A + H * 0.06;
-    const vx = Math.round(W * 0.08), vw = W - 2 * vx;
-    const vy = titleY + H * 0.1;
-    const vh = H * 0.12;
-    return { u, A, ax, ay, tx: W * 0.08, tw: W * 0.84, align: 'center', titleY, vx, vw, vy, vh, py: vy + vh + H * 0.06 };
-  }
+  const geometry = Core.avGeometry; // pure + unit-tested: zones never overlap at any frame size
+
 
   /* ---------------- analysis ---------------- */
   function makeAnalyzer(o) {
@@ -130,11 +99,18 @@
     const { W, H } = o;
     if (o.bgMode === 'image' && im) {
       const key = `${W}x${H}|${im.url}`;
-      if (!blurCache || blurCache.key !== key) blurCache = { key, c: makeBlur(im.img, im.w, im.h, W, H, 0.5) };
+      // a few sizes are kept (thumbnails + preview + export) so they don't keep evicting each other
+      let bc = blurCache && blurCache.get(key);
+      if (!bc) {
+        if (!blurCache) blurCache = new Map();
+        if (blurCache.size >= 3) blurCache.delete(blurCache.keys().next().value);
+        bc = makeBlur(im.img, im.w, im.h, W, H, 0.5);
+        blurCache.set(key, bc);
+      }
       ctx.fillStyle = '#000';
       ctx.fillRect(0, 0, W, H);
       ctx.imageSmoothingQuality = 'high';
-      drawImageFit(ctx, blurCache.c, blurCache.c.width, blurCache.c.height, 0, 0, W, H, 'cover', 1.05);
+      drawImageFit(ctx, bc, bc.width, bc.height, 0, 0, W, H, 'cover', 1.05);
       return;
     }
     if (o.bgMode === 'color') {
@@ -325,7 +301,7 @@
   const endFrac = (o, t) => Math.min(1, t / Math.max(1e-3, o.duration - 1 / o.fps));
 
   function makeDraw(o, im) {
-    const g = geometry(o.W, o.H, (o.look || DEFAULT_LOOK).layout);
+    const g = geometry(o.W, o.H, (o.look || DEFAULT_LOOK).layout, o.style);
     const showArt = !g.noArt || o.style === 'circle';
     const an = makeAnalyzer(o);
     const nBands = o.W > o.H ? 56 : 40;
@@ -410,8 +386,9 @@
     } catch (e) { toast(e.message); }
   });
 
+  const previewSoon = oncePerFrame(preview);
   ['avTitle', 'avSub', 'avStyle', 'avColor1', 'avColor2', 'avBgMode', 'avBgColor', 'avSize', 'avFps', 'avStart', 'avDur', 'avProgress'].forEach((id) =>
-    $(id).addEventListener('input', preview)
+    $(id).addEventListener('input', previewSoon)
   );
 
   $('avPlay').onclick = async () => {

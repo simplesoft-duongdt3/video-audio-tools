@@ -97,7 +97,9 @@ const VideoEngine = (() => {
       mbPromise = (async () => {
         const MB = await import('mediabunny');
         let aac = 'native';
-        const native = await MB.canEncodeAudio('aac', { numberOfChannels: 2, sampleRate: SR, bitrate: AUDIO_BITRATE }).catch(() => false);
+        // songs are fed at their own rate (44.1 or 48 kHz): native AAC must handle both, else use the WASM encoder
+        const can = (sampleRate) => MB.canEncodeAudio('aac', { numberOfChannels: 2, sampleRate, bitrate: AUDIO_BITRATE }).catch(() => false);
+        const native = (await can(48000)) && (await can(44100));
         if (!native) {
           const { registerAacEncoder } = await import(AAC_ENCODER_URL);
           registerAacEncoder();

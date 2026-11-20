@@ -359,6 +359,71 @@
     return Math.sqrt(s / Math.max(1, samples.length));
   }
 
+  /* ---------------- Audio → Video layout ---------------- */
+  /**
+   * Where the cover art, title block, visualizer and time bar go, for any frame size (9:16, 4:5, 1:1, 16:9).
+   * Zones are STACKED (never overlap): each layout lists its zones top→bottom and the art gets what is left.
+   * layout: 'cover' (art, text, visualizer) | 'top' (text first: podcast) | 'minimal' (no art, big visualizer).
+   * style 'circle' draws rays around the art: its full drawn size is reserved (1.44·A + 44u).
+   * Returns drawing fields + `zones` {art,text,vis,prog: [top, bottom]} used by the tests.
+   */
+  function avGeometry(W, H, layout = 'cover', style = 'bars') {
+    const u = Math.min(W, H) / 1080, fs = 64 * u;
+    const TEXT_TOP = 0.95 * fs; // accents above the first baseline
+    const TEXT_H = 252 * u; // 2 title lines + subtitle (drawText)
+    const PROG_H = 72 * u; // knob (12u above the bar) + bar + time labels
+    const rays = style === 'circle';
+    const ring = (A) => (rays ? A * 1.44 + 44 * u : A);
+    const fromRing = (R) => Math.max(40 * u, rays ? (R - 44 * u) / 1.44 : R);
+    const land = W > H * 1.15;
+    const z = (a, b) => [Math.round(a), Math.round(b)];
+
+    if (land && layout !== 'minimal') {
+      // art on the left, a column with title, visualizer and time bar on the right
+      const A = Math.round(fromRing(Math.min(H * (rays ? 0.8 : 0.62), W * (rays ? 0.42 : 0.38))));
+      const pad = (ring(A) - A) / 2;
+      const ax = Math.round(W * 0.06 + pad), ay = Math.round((H - A) / 2);
+      const tx = Math.round(ax + A + pad + W * 0.05), tw = Math.round(W - tx - W * 0.06);
+      const gap = H * 0.05, vh = H * 0.22;
+      const top = (H - (TEXT_H + gap + vh + gap + PROG_H)) / 2;
+      const titleY = top + TEXT_TOP, vy = top + TEXT_H + gap, py = vy + vh + gap;
+      return {
+        u, A, ax, ay, tx, tw, align: 'left', titleY, vx: tx, vw: tw, vy, vh, py,
+        zones: { art: z(ay - pad, ay + A + pad), text: z(top, top + TEXT_H), vis: z(vy, vy + vh), prog: z(py - 12 * u, py + PROG_H), artX: z(ax - pad, ax + A + pad), colX: z(tx, tx + tw) },
+      };
+    }
+
+    const gap = H * 0.035, margin = H * 0.06;
+    const minimal = layout === 'minimal';
+    const vh = minimal ? H * (land ? 0.3 : 0.24) : H * (H > W * 1.3 ? 0.12 : 0.14);
+    let A, order;
+    if (minimal) {
+      A = Math.round(fromRing(vh)); // only drawn for the circle style, inside the visualizer zone
+      order = ['vis', 'text', 'prog'];
+    } else {
+      const avail = H - (TEXT_H + vh + PROG_H + 3 * gap + 2 * margin);
+      const cap = layout === 'top' ? Math.min(W * 0.5, H * 0.28) : Math.min(W * 0.64, H * 0.33);
+      A = Math.round(Math.min(cap, fromRing(Math.min(avail, W * 0.84))));
+      order = layout === 'top' ? ['text', 'art', 'vis', 'prog'] : ['art', 'text', 'vis', 'prog'];
+    }
+    const size = { art: ring(A), text: TEXT_H, vis: vh, prog: PROG_H };
+    const total = order.reduce((s, k) => s + size[k], 0) + gap * (order.length - 1);
+    let y = Math.max(margin * 0.5, (H - total) * 0.45);
+    const zones = {};
+    for (const k of order) { zones[k] = z(y, y + size[k]); y += size[k] + gap; }
+    const vy = zones.vis[0];
+    const pad = (ring(A) - A) / 2;
+    const ay = minimal ? Math.round(vy + vh / 2 - A / 2) : Math.round(zones.art[0] + pad);
+    if (minimal) zones.art = z(ay - pad, ay + A + pad);
+    const ax = Math.round((W - A) / 2);
+    zones.artX = z(ax - pad, ax + A + pad);
+    return {
+      u, A, ax, ay, noArt: minimal, tx: W * 0.08, tw: W * 0.84, align: 'center',
+      titleY: zones.text[0] + TEXT_TOP, vx: Math.round(W * 0.08), vw: Math.round(W * 0.84), vy, vh, py: zones.prog[0] + 12 * u,
+      zones,
+    };
+  }
+
   /* ---------------- photo colour filters (slideshow templates) ---------------- */
   const FILTERS = ['none', 'bw', 'warm', 'cool', 'vintage'];
   const clamp255 = (v) => (v < 0 ? 0 : v > 255 ? 255 : v);
@@ -424,17 +489,17 @@
       return { title: 'Thiết bị hết bộ nhớ khi xuất video', hint: 'Thử chọn khung 720×1280, giảm “Thời lượng”, đóng bớt tab khác, hoặc xuất trên máy tính.' };
     if (/import|dynamically imported|Failed to fetch|NetworkError|Load failed|network/i.test(m))
       return { title: 'Không tải được thư viện xuất video', hint: 'Kiểm tra kết nối mạng rồi bấm “Thử lại”.' };
-    if (/NotSupported|not supported|codec|encoder|configure/i.test(m))
+    if (/NotSupported|not supported|codec|encoder|configure|EncodingError/i.test(m))
       return { title: 'Trình duyệt không mã hoá được video với cài đặt này', hint: 'Thử khung 720×1280 hoặc 30 fps, hoặc dùng Chrome / Safari bản mới.' };
     if (/rời khỏi trang|hidden/i.test(m))
       return { title: 'Đã dừng vì trang bị ẩn', hint: 'Giữ màn hình mở và ở lại trang này đến khi xuất xong.' };
-    if (/decode|giải mã|EncodingError/i.test(m))
+    if (/decode|giải mã/i.test(String(message)))
       return { title: 'Không đọc được file audio', hint: 'Thử đổi file sang MP3 / M4A / WAV.' };
     return { title: 'Xuất video bị lỗi', hint: 'Bấm “Thử lại”. Nếu vẫn lỗi, bấm “Sao chép thông tin lỗi” và gửi cho chúng tôi.' };
   }
 
   return {
-    audioFade, fadeGain, exportEstimate, friendlyError, FILTERS, applyFilter,
+    audioFade, fadeGain, exportEstimate, friendlyError, FILTERS, applyFilter, avGeometry,
     formatBytes, formatTime, baseName, detectPlatform,
     isHeic, isHeicBrand, looksLikeAudio, AUDIO_EXT, fitArea,
     exifOrientation, orientationApp1, stripJpegBytes,

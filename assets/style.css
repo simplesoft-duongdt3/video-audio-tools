@@ -107,11 +107,6 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); }
 .thumbs .t { position: relative; width: 64px; height: 64px; border-radius: 6px; background: #000 center/cover; }
 .thumbs .t button { position: absolute; top: -6px; right: -6px; width: 22px; height: 22px; min-height: 0; padding: 0; border-radius: 50%; font-size: 12px; line-height: 1; }
 
-.templates { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; }
-.templates button { padding: 0; aspect-ratio: 9/16; overflow: hidden; border-width: 2px; position: relative; }
-.templates button canvas { width: 100%; height: 100%; display: block; }
-.templates button span { position: absolute; left: 0; right: 0; bottom: 0; font-size: 0.7rem; background: rgba(0,0,0,0.65); padding: 2px; }
-.templates button.active { border-color: var(--accent2); }
 
 .progress { position: relative; height: 26px; background: var(--panel2); border-radius: 8px; overflow: hidden; margin: 10px 0; border: 1px solid var(--line); }
 .progress div { position: absolute; inset: 0 auto 0 0; width: 0; background: linear-gradient(90deg, var(--accent), var(--accent2)); transition: width 0.15s; }
@@ -157,10 +152,26 @@ dialog.copybox textarea { width: 100%; box-sizing: border-box; font-family: ui-m
 
 /* template picker */
 .tpl-picker { margin-bottom: 12px; }
+.tpl-picker .tpl-hint { margin: 0 0 8px; }
 .tpl-picker .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
-.tpl-picker .chips button { padding: 4px 10px; font-size: 0.8rem; border-radius: 999px; }
+.tpl-picker .chips button { min-height: 36px; padding: 4px 12px; font-size: 0.8rem; border-radius: 999px; }
 .tpl-picker .chips button.active { border-color: var(--accent2); color: var(--accent2); }
-.templates button .del { position: absolute; top: 2px; right: 2px; width: 22px; height: 22px; line-height: 20px; border-radius: 50%; background: rgba(0,0,0,0.7); color: #fff; font-style: normal; font-size: 0.9rem; }
-.templates button.add { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; border-style: dashed; }
-.templates button.add b { font-size: 1.6rem; }
-.templates button.add span { position: static; background: none; font-size: 0.7rem; padding: 0 4px; }
+.templates { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 10px 8px; }
+.templates .tcard { position: relative; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.templates .tcard > button[data-tpl] { padding: 0; width: 100%; aspect-ratio: 9/16; overflow: hidden; border-width: 2px; }
+.templates .tcard canvas { width: 100%; height: 100%; display: block; }
+.templates .tcard > button.active { border-color: var(--accent2); }
+.templates .tname { font-size: 0.72rem; line-height: 1.2; text-align: center; color: var(--muted); overflow-wrap: anywhere; }
+.templates .tcard > button.active + .tname { color: var(--text); font-weight: 600; }
+.templates .tdel { position: absolute; top: 4px; right: 4px; width: 36px; height: 36px; padding: 0; border-radius: 50%; background: rgba(0,0,0,0.75); color: #fff; font-size: 1.15rem; line-height: 1; }
+.templates .tadd { aspect-ratio: 9/16; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 6px; border-style: dashed; font-size: 0.72rem; }
+.templates .tadd b { font-size: 1.4rem; }
+/* phones: one horizontal row instead of a tall grid, so the preview stays close */
+@media (max-width: 640px) {
+  .templates { display: flex; overflow-x: auto; scroll-snap-type: x proximity; padding-bottom: 6px; }
+  .templates .tcard, .templates .tadd { flex: 0 0 86px; scroll-snap-align: start; }
+}
+button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent2); outline-offset: 2px; }
+.errbox .row button { flex: 1 1 200px; }
+/* grid/flex children default to min-width:auto: without this the scrolling template row widens the page */
+.split > *, .controls, .tpl-picker { min-width: 0; }
