@@ -359,6 +359,33 @@
     return Math.sqrt(s / Math.max(1, samples.length));
   }
 
+  /* ---------------- photo colour filters (slideshow templates) ---------------- */
+  const FILTERS = ['none', 'bw', 'warm', 'cool', 'vintage'];
+  const clamp255 = (v) => (v < 0 ? 0 : v > 255 ? 255 : v);
+  /** In-place colour filter on RGBA pixel data (alpha untouched). */
+  function applyFilter(d, kind) {
+    if (!kind || kind === 'none') return d;
+    for (let i = 0; i < d.length; i += 4) {
+      const r = d[i], g = d[i + 1], b = d[i + 2];
+      const y = 0.299 * r + 0.587 * g + 0.114 * b;
+      if (kind === 'bw') {
+        const v = clamp255((y - 128) * 1.12 + 128); // a little extra contrast, like B&W film
+        d[i] = d[i + 1] = d[i + 2] = v;
+      } else if (kind === 'warm') {
+        d[i] = clamp255(r * 1.08 + 10); d[i + 1] = clamp255(g * 1.02 + 4); d[i + 2] = clamp255(b * 0.88);
+      } else if (kind === 'cool') {
+        d[i] = clamp255(r * 0.9); d[i + 1] = clamp255(g * 1.0 + 2); d[i + 2] = clamp255(b * 1.08 + 10);
+      } else if (kind === 'vintage') {
+        // sepia mixed with the original, lifted blacks and softened whites (faded print)
+        const sr = 0.393 * r + 0.769 * g + 0.189 * b, sg = 0.349 * r + 0.686 * g + 0.168 * b, sb = 0.272 * r + 0.534 * g + 0.131 * b;
+        d[i] = clamp255(20 + 0.82 * (0.6 * sr + 0.4 * r));
+        d[i + 1] = clamp255(18 + 0.8 * (0.6 * sg + 0.4 * g));
+        d[i + 2] = clamp255(16 + 0.76 * (0.6 * sb + 0.4 * b));
+      }
+    }
+    return d;
+  }
+
   /* ---------------- export helpers ---------------- */
   /**
    * Where the sound of a clip ends and how long its fade-out is (same rule on every export path).
@@ -407,7 +434,7 @@
   }
 
   return {
-    audioFade, fadeGain, exportEstimate, friendlyError,
+    audioFade, fadeGain, exportEstimate, friendlyError, FILTERS, applyFilter,
     formatBytes, formatTime, baseName, detectPlatform,
     isHeic, isHeicBrand, looksLikeAudio, AUDIO_EXT, fitArea,
     exifOrientation, orientationApp1, stripJpegBytes,

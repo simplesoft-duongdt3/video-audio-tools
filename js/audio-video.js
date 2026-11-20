@@ -9,6 +9,24 @@
   let rw = null; // export button (estimate line)
   const FFT = 2048;
 
+  /* ---------------- templates ---------------- */
+  /** Look = what a template sets that has no control: fonts, text colour, background gradient, layout. */
+  const DEFAULT_LOOK = { font: 'Be Vietnam Pro', weight: 800, italic: false, ink: '#ffffff', dim: 'rgba(255,255,255,0.28)', stops: ['#1b1036', '#07070c'], angle: 72, layout: 'cover', glow: true };
+  const T = (id, name, cat, set, look) => ({ id, name, cat, set: { avProgress: true, avBgColor: '#101018', ...set }, style: look });
+  const AV_TEMPLATES = [
+    T('neon', 'TikTok Neon', 'Phổ biến', { avStyle: 'bars', avColor1: '#25f4ee', avColor2: '#fe2c55', avBgMode: 'gradient' }, {}),
+    T('lofi', 'Lo-fi', 'Chill', { avStyle: 'mirror', avColor1: '#c084fc', avColor2: '#f9a8d4', avBgMode: 'gradient' }, { stops: ['#2e1065', '#831843'], angle: 120 }),
+    T('podcast', 'Podcast', 'Giọng nói', { avStyle: 'wave', avColor1: '#fbbf24', avColor2: '#f97316', avBgMode: 'gradient' }, { font: 'Montserrat', weight: 900, stops: ['#111827', '#030712'], layout: 'top' }),
+    T('vinyl', 'Đĩa than', 'Phổ biến', { avStyle: 'circle', avColor1: '#fde68a', avColor2: '#f59e0b', avBgMode: 'gradient' }, { font: 'Playfair Display', weight: 700, italic: true, stops: ['#292524', '#0c0a09'] }),
+    T('ocean', 'Biển xanh', 'Chill', { avStyle: 'wave', avColor1: '#67e8f9', avColor2: '#3b82f6', avBgMode: 'gradient' }, { stops: ['#0c4a6e', '#082f49'], angle: 100, layout: 'minimal' }),
+    T('sunset', 'Hoàng hôn', 'Chill', { avStyle: 'bars', avColor1: '#fde047', avColor2: '#fb7185', avBgMode: 'gradient' }, { font: 'Playfair Display', weight: 700, italic: true, stops: ['#9a3412', '#4c0519'], angle: 90 }),
+    T('karaoke', 'Karaoke', 'Phổ biến', { avStyle: 'overview', avColor1: '#fe2c55', avColor2: '#25f4ee', avBgMode: 'gradient' }, { font: 'Montserrat', weight: 900, stops: ['#18181b', '#000000'], layout: 'minimal' }),
+    T('paper', 'Tối giản sáng', 'Giọng nói', { avStyle: 'overview', avColor1: '#111111', avColor2: '#555555', avBgMode: 'color', avBgColor: '#f4f1ea' }, { ink: '#111111', dim: 'rgba(0,0,0,0.16)', glow: false, layout: 'minimal' }),
+    T('hacker', 'Hacker', 'Nổi bật', { avStyle: 'bars', avColor1: '#39ff88', avColor2: '#16a34a', avBgMode: 'color', avBgColor: '#0b1410' }, { font: 'Roboto Mono', weight: 700, ink: '#39ff88', dim: 'rgba(57,255,136,0.22)', layout: 'top' }),
+  ];
+  let look = { ...DEFAULT_LOOK };
+  const fontOf = (L, px) => `${L.italic ? 'italic ' : ''}${L.weight} ${px}px "${L.font}", "Be Vietnam Pro", sans-serif`;
+
   function opts() {
     const size = getSize($('avSize'));
     const audioDur = audio ? audio.duration : 0;
@@ -24,12 +42,29 @@
       c1: $('avColor1').value, c2: $('avColor2').value,
       bgMode: $('avBgMode').value, bgColor: $('avBgColor').value,
       progress: $('avProgress').checked,
+      look,
     };
   }
 
   /* ---------------- geometry ---------------- */
-  function geometry(W, H) {
+  function geometry(W, H, layout = 'cover') {
     const u = Math.min(W, H) / 1080;
+    if (layout === 'minimal') {
+      // no cover: a big visualizer in the middle, title under it (the circle style still gets its disc)
+      const land = W > H;
+      const vx = Math.round(W * (land ? 0.1 : 0.08)), vw = W - 2 * vx;
+      const vy = H * (land ? 0.26 : 0.36), vh = H * (land ? 0.3 : 0.2);
+      const A = Math.round(Math.min(W, H) * (land ? 0.5 : 0.46));
+      return { u, A, ax: Math.round((W - A) / 2), ay: Math.round(vy + vh / 2 - A / 2), noArt: true, tx: vx, tw: vw, align: 'center',
+        titleY: vy + vh + H * (land ? 0.16 : 0.12), vx, vw, vy, vh, py: H * (land ? 0.86 : 0.84) };
+    }
+    if (layout === 'top' && H >= W) {
+      // podcast: title first, then the art, then the visualizer
+      const A = Math.round(Math.min(W * 0.5, H * 0.28));
+      const titleY = H * 0.12, ay = Math.round(H * 0.24), ax = Math.round((W - A) / 2);
+      const vx = Math.round(W * 0.08), vw = W - 2 * vx, vy = ay + A + H * 0.07, vh = H * 0.14;
+      return { u, A, ax, ay, tx: W * 0.08, tw: W * 0.84, align: 'center', titleY, vx, vw, vy, vh, py: vy + vh + H * 0.06 };
+    }
     if (W > H) {
       // landscape: cover art on the left, everything else in a right-hand column
       const A = Math.round(H * 0.6);
@@ -106,12 +141,14 @@
       ctx.fillStyle = o.bgColor;
       ctx.fillRect(0, 0, W, H);
     } else {
-      const lg = ctx.createLinearGradient(0, 0, W * 0.3, H);
-      lg.addColorStop(0, '#1b1036');
-      lg.addColorStop(1, '#07070c');
+      const L = o.look || DEFAULT_LOOK;
+      const r = (L.angle * Math.PI) / 180, dx = Math.cos(r) * W / 2, dy = Math.sin(r) * H / 2;
+      const lg = ctx.createLinearGradient(W / 2 - dx, H / 2 - dy, W / 2 + dx, H / 2 + dy);
+      L.stops.forEach((c, i) => lg.addColorStop(i / (L.stops.length - 1), c));
       ctx.fillStyle = lg;
       ctx.fillRect(0, 0, W, H);
     }
+    if ((o.look || DEFAULT_LOOK).glow === false) return;
     // soft glow behind the art
     const cx = g.ax + g.A / 2, cy = g.ay + g.A / 2;
     const rg = ctx.createRadialGradient(cx, cy, 0, cx, cy, g.A * 1.1);
@@ -180,9 +217,10 @@
     ctx.save();
     ctx.textAlign = align;
     ctx.textBaseline = 'alphabetic';
-    ctx.fillStyle = '#fff';
+    const L = o.look || DEFAULT_LOOK;
+    ctx.fillStyle = L.ink;
     const fs = Math.round(64 * u);
-    ctx.font = `800 ${fs}px "Be Vietnam Pro", sans-serif`;
+    ctx.font = fontOf(L, fs);
     const lines = Core.clampLines(ctx, o.title.normalize('NFC'), tw, 2);
     let y = g.titleY;
     for (const l of lines) { ctx.fillText(l, x, y); y += fs * 1.22; }
@@ -254,7 +292,7 @@
     const played = frac * n;
     for (let i = 0; i < n; i++) {
       const h = Math.max(6 * g.u, pk[i] * g.vh);
-      ctx.fillStyle = i < played ? o.c1 : 'rgba(255,255,255,0.28)';
+      ctx.fillStyle = i < played ? o.c1 : (o.look || DEFAULT_LOOK).dim;
       roundRect(ctx, g.vx + i * step + (step - bw) / 2, g.vy + (g.vh - h) / 2, bw, h, bw / 2);
       ctx.fill();
     }
@@ -264,16 +302,17 @@
     const { u, vx, vw } = g;
     const y = g.py, h = Math.max(4, 8 * u);
     const frac = endFrac(o, t);
+    const ink = (o.look || DEFAULT_LOOK).ink;
     ctx.save();
-    ctx.fillStyle = 'rgba(255,255,255,0.25)';
+    ctx.fillStyle = hexA(ink, 0.25);
     roundRect(ctx, vx, y, vw, h, h / 2); ctx.fill();
-    ctx.fillStyle = '#fff';
+    ctx.fillStyle = ink;
     roundRect(ctx, vx, y, Math.max(h, vw * frac), h, h / 2); ctx.fill();
     ctx.beginPath();
     ctx.arc(vx + vw * frac, y + h / 2, h * 1.4, 0, Math.PI * 2);
     ctx.fill();
     ctx.font = `600 ${Math.round(30 * u)}px "Be Vietnam Pro", sans-serif`;
-    ctx.fillStyle = 'rgba(255,255,255,0.8)';
+    ctx.fillStyle = hexA(ink, 0.8);
     ctx.textBaseline = 'top';
     ctx.textAlign = 'left';
     ctx.fillText(formatTime(t), vx, y + h + 16 * u);
@@ -286,7 +325,8 @@
   const endFrac = (o, t) => Math.min(1, t / Math.max(1e-3, o.duration - 1 / o.fps));
 
   function makeDraw(o, im) {
-    const g = geometry(o.W, o.H);
+    const g = geometry(o.W, o.H, (o.look || DEFAULT_LOOK).layout);
+    const showArt = !g.noArt || o.style === 'circle';
     const an = makeAnalyzer(o);
     const nBands = o.W > o.H ? 56 : 40;
     // Everything that never moves (background, blur, cover art, title) is drawn ONCE into this layer;
@@ -297,14 +337,14 @@
       still = makeCanvas(o.W, o.H);
       const c = still.getContext('2d', { alpha: false });
       drawBackground(c, o, g, im);
-      if (im) drawArt(c, o, g, im, 0, o.style === 'circle');
+      if (im && showArt) drawArt(c, o, g, im, 0, o.style === 'circle' || !!g.noArt);
       drawText(c, o, g);
       return still;
     };
     return (ctx, t) => {
       const { bands, wave, level } = an.at(t, o.style === 'circle' ? 48 : nBands);
       ctx.drawImage(stillLayer(), 0, 0);
-      if (!im) drawArt(ctx, o, g, null, level, o.style === 'circle'); // the pulsing disc moves with the music
+      if (!im && showArt) drawArt(ctx, o, g, null, level, o.style === 'circle'); // the pulsing disc moves with the music
       if (o.style === 'circle') drawCircle(ctx, o, g, bands);
       if (o.style === 'bars') drawBars(ctx, o, g, bands, false);
       else if (o.style === 'mirror') drawBars(ctx, o, g, bands, true);
@@ -321,7 +361,8 @@
 
   async function ensureFonts() {
     try {
-      await Promise.all(['800 40px "Be Vietnam Pro"', '600 40px "Be Vietnam Pro"'].map((f) => document.fonts.load(f, 'AaĂâđỔẶ♪' + opts().title)));
+      const specs = new Set(['800 40px "Be Vietnam Pro"', '600 40px "Be Vietnam Pro"', ...AV_TEMPLATES.map((t) => fontOf({ ...DEFAULT_LOOK, ...t.style }, 40)), fontOf(look, 40)]);
+      await Promise.all([...specs].map((f) => document.fonts.load(f, 'AaĂâđỔẶ♪' + opts().title)));
     } catch (_) {}
   }
 
@@ -365,6 +406,7 @@
       $('avImgInfo').textContent = `🖼️ ${f.name}`;
       if ($('avBgMode').value === 'gradient') $('avBgMode').value = 'image';
       preview();
+      picker.refresh(); // thumbnails now show the cover
     } catch (e) { toast(e.message); }
   });
 
@@ -406,7 +448,31 @@
     },
   });
 
+  /* template picker */
+  const AV_CONTROLS = ['avStyle', 'avColor1', 'avColor2', 'avBgMode', 'avBgColor', 'avProgress', 'avSize', 'avFps', 'avSub'];
+  const picker = Templates.mount({
+    box: $('avTemplates'),
+    key: 'av',
+    builtins: AV_TEMPLATES,
+    thumb: (t, ctx, W, H) => {
+      const cur = opts(), set = t.set || {};
+      const keepImage = art && cur.bgMode === 'image';
+      const o = {
+        ...cur, W, H, fps: 30, style: set.avStyle || cur.style, c1: set.avColor1 || cur.c1, c2: set.avColor2 || cur.c2,
+        bgMode: keepImage ? 'image' : set.avBgMode === 'image' && !art ? 'gradient' : set.avBgMode || cur.bgMode,
+        bgColor: set.avBgColor || cur.bgColor, progress: set.avProgress !== undefined ? !!set.avProgress : cur.progress,
+        look: { ...DEFAULT_LOOK, ...t.style },
+      };
+      makeDraw(o, art)(ctx, audio ? Math.min(o.duration * 0.3, 20) : 0.5);
+    },
+    apply: (t) => { look = { ...DEFAULT_LOOK, ...t.style }; ensureFonts().then(preview); preview(); },
+    controls: AV_CONTROLS,
+    captureStyle: () => ({ ...look }),
+    // a chosen cover keeps its "image" background when switching templates
+    skipControl: (id) => id === 'avBgMode' && art && $('avBgMode').value === 'image',
+  });
+
   window.addEventListener('tabshown', (e) => e.detail === 'audiovideo' && preview());
   preview();
-  ensureFonts().then(preview);
+  ensureFonts().then(() => { preview(); picker.refresh(); });
 })();

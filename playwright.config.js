@@ -10,8 +10,9 @@ module.exports = defineConfig({
   expect: { timeout: 15_000 },
   fullyParallel: false,
   workers: 2,
-  retries: 0,
-  reporter: [['list'], ['html', { open: 'never', outputFolder: 'tests/report' }]],
+  // CI: one retry marks flaky tests (reported as "flaky", not hidden); `github` turns failures into public annotations.
+  retries: process.env.CI ? 1 : 0,
+  reporter: [...(process.env.CI ? [['github']] : []), ['list'], ['html', { open: 'never', outputFolder: 'tests/report' }]],
   outputDir: 'tests/results',
   use: {
     baseURL: `http://127.0.0.1:${PORT}/`,

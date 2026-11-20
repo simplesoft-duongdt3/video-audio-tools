@@ -64,7 +64,7 @@ test.describe('text + audio → video', () => {
     const errors = await openTab(page, 'textvideo');
     const c = await caps(page);
     test.skip(!c.webcodecs && !c.recorder, NO_EXPORT);
-    await page.click('#tvTemplates button >> nth=2');
+    await page.click('#tvTemplates [data-tpl] >> nth=2');
     await page.setInputFiles('#tvAudio', fx('tone.mp3'));
     await expect(page.locator('#tvAudioInfo')).toContainText('3 slide');
     await page.selectOption('#tvSizeSel', '720x1280');

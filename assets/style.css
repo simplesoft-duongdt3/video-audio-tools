@@ -154,3 +154,13 @@ table.selftest td:last-child { color: var(--muted); word-break: break-word; }
 .hint.mono { font-family: ui-monospace, Menlo, monospace; font-size: 0.78rem; word-break: break-word; }
 dialog.copybox { background: var(--panel); color: inherit; border: 1px solid var(--line); border-radius: var(--radius); width: min(640px, 92vw); }
 dialog.copybox textarea { width: 100%; box-sizing: border-box; font-family: ui-monospace, Menlo, monospace; font-size: 0.78rem; }
+
+/* template picker */
+.tpl-picker { margin-bottom: 12px; }
+.tpl-picker .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.tpl-picker .chips button { padding: 4px 10px; font-size: 0.8rem; border-radius: 999px; }
+.tpl-picker .chips button.active { border-color: var(--accent2); color: var(--accent2); }
+.templates button .del { position: absolute; top: 2px; right: 2px; width: 22px; height: 22px; line-height: 20px; border-radius: 50%; background: rgba(0,0,0,0.7); color: #fff; font-style: normal; font-size: 0.9rem; }
+.templates button.add { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; border-style: dashed; }
+.templates button.add b { font-size: 1.6rem; }
+.templates button.add span { position: static; background: none; font-size: 0.7rem; padding: 0 4px; }

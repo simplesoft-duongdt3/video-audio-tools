@@ -300,3 +300,28 @@ test('friendlyError: common browser failures map to an actionable Vietnamese mes
   assert.match(other.hint, /Sao chép thông tin lỗi/);
   for (const m of ['', undefined]) assert.ok(C.friendlyError(m).title);
 });
+
+test('applyFilter: bw is grey, warm/cool shift red vs blue, vintage lifts blacks, alpha untouched, none is a no-op', () => {
+  const px = () => new Uint8ClampedArray([200, 100, 50, 255, 0, 0, 0, 128, 255, 255, 255, 7]);
+  const bw = C.applyFilter(px(), 'bw');
+  for (let i = 0; i < bw.length; i += 4) { assert.equal(bw[i], bw[i + 1]); assert.equal(bw[i + 1], bw[i + 2]); }
+  const warm = C.applyFilter(px(), 'warm'), cool = C.applyFilter(px(), 'cool');
+  assert.ok(warm[0] - warm[2] > 200 - 50, 'warm: more red than blue than before');
+  assert.ok(cool[2] - cool[0] > 50 - 200, 'cool: bluer');
+  const v = C.applyFilter(px(), 'vintage');
+  assert.ok(v[4] >= 15 && v[5] >= 15, 'black becomes faded');
+  assert.ok(v[8] < 255 || v[10] < 255, 'white is softened');
+  for (const f of ['bw', 'warm', 'cool', 'vintage']) {
+    const d = C.applyFilter(px(), f);
+    assert.deepEqual([d[3], d[7], d[11]], [255, 128, 7], f + ' keeps alpha');
+  }
+  assert.deepEqual([...C.applyFilter(px(), 'none')], [...px()]);
+  assert.deepEqual(C.FILTERS, ['none', 'bw', 'warm', 'cool', 'vintage']);
+});
+
+test('every slideshow filter option in index.html is implemented by Core.applyFilter', () => {
+  const html = readFileSync(join(__dirname, '..', '..', 'index.html'), 'utf8');
+  const sel = html.match(/<select id="ivFilter">([\s\S]*?)<\/select>/)[1];
+  const opts = [...sel.matchAll(/value="([^"]+)"/g)].map((m) => m[1]);
+  assert.deepEqual(opts.sort(), [...C.FILTERS].sort());
+});

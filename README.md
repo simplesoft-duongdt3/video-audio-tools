@@ -9,9 +9,10 @@ Bộ công cụ xử lý ảnh / audio / video **chạy 100% trên trình duyệ
 | 🔁 Chuyển định dạng | HEIC/HEIF, JPG, PNG, WebP, GIF, BMP, AVIF, SVG → JPG / PNG / WebP (AVIF nếu trình duyệt hỗ trợ). Xử lý hàng loạt, tải .zip |
 | 🗜️ Nén ảnh | **Lossless**: tối ưu lại PNG (giữ nguyên pixel, bỏ metadata). **Lossy**: giảm chất lượng JPG/WebP, giảm bảng màu PNG. Chuyển sang WebP. Giới hạn cạnh dài |
 | ✂️ Cắt & Resize | Cắt tự do hoặc theo tỉ lệ (9:16 TikTok, 1:1, 4:5, 16:9, 4:3…), xoay, lật, resize theo px, preset 1080×1920… |
-| 🖼️ Ảnh + Audio → Video | 1 ảnh hoặc slideshow nhiều ảnh + nhạc → MP4. Mặc định 9:16 1080×1920. Nền mờ / phủ kín, zoom Ken Burns, chuyển cảnh mờ dần, cắt đoạn audio |
-| 🔤 Text + Audio → Video | 10 template kiểu TikTok, mỗi đoạn văn = 1 slide, hiệu ứng chữ (bật lên, gõ chữ, từng từ…), nền ảnh/màu, handle @tên. Xuất video MP4 hoặc ảnh PNG từng slide |
-| 🎧 Audio → Video | 1 file audio (mp3, m4a, wav, aac, flac, ogg, ghi âm, hoặc video có tiếng) → MP4 có sóng nhạc chuyển động (cột phổ, đối xứng, waveform, vòng tròn, dạng sóng cả bài), tên bài, dòng phụ, ảnh bìa + nền mờ, thanh thời gian. Cắt đoạn bằng "bắt đầu từ" + thời lượng |
+| 🖼️ Ảnh + Audio → Video | 1 ảnh hoặc slideshow nhiều ảnh + nhạc → MP4. **9 mẫu** (Kỷ niệm, Du lịch, Polaroid, Điện ảnh, Đen trắng, Cổ điển, Sản phẩm, Năng động…). Nền mờ / phủ kín / Polaroid, zoom vào–ra, chuyển cảnh mờ – trượt – phóng to, màu ảnh (ấm, lạnh, đen trắng, cổ điển), tiêu đề trên video, khung điện ảnh, cắt đoạn audio |
+| 🔤 Text + Audio → Video | **19 mẫu** chia nhóm (Phổ biến, Nổi bật, Trích dẫn, Bài học, Tin tức, Bán hàng, Tối giản), mỗi đoạn văn = 1 slide, hiệu ứng chữ (bật lên, gõ chữ, từng từ…), nền ảnh/màu, handle @tên. Xuất video MP4 hoặc ảnh PNG từng slide |
+| 🎧 Audio → Video | 1 file audio (mp3, m4a, wav, aac, flac, ogg, ghi âm, hoặc video có tiếng) → MP4 theo **9 mẫu** (TikTok Neon, Lo-fi, Podcast, Đĩa than, Biển xanh, Hoàng hôn, Karaoke, Tối giản sáng, Hacker — 3 bố cục, nền sáng/tối, font riêng), sóng nhạc chuyển động (cột phổ, đối xứng, waveform, vòng tròn, dạng sóng cả bài), tên bài, dòng phụ, ảnh bìa + nền mờ, thanh thời gian. Cắt đoạn bằng "bắt đầu từ" + thời lượng |
+| ⭐ Mẫu của tôi | Ở cả 3 tab video: bấm **＋ Lưu cài đặt hiện tại thành mẫu** để dùng lại (lưu trên trình duyệt đó, xoá bằng ×). Ảnh mẫu được dùng để xem trước khi chưa chọn ảnh |
 | 🩺 Tự kiểm tra | `index.html#selftest` (link ở chân trang): chạy thử thật trên thiết bị đang dùng — giải mã m4a/mp3, nén ảnh, xuất video 1 giây… để biết máy đó dùng được gì |
 
 ### iPhone: chọn file audio

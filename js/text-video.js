@@ -14,22 +14,22 @@
 
   const TEMPLATES = [
     {
-      id: 'classic', name: 'Classic',
+      id: 'classic', cat: 'Phổ biến', name: 'Classic',
       bg: (c, W, H) => linear(c, W, H, ['#0f0c29', '#302b63', '#24243e']),
       font: 'Be Vietnam Pro', weight: 800, color: '#fff', stroke: { color: '#000', w: 0.14 }, lineHeight: 1.25,
     },
     {
-      id: 'caption', name: 'Caption box',
+      id: 'caption', cat: 'Phổ biến', name: 'Caption box',
       bg: (c, W, H) => linear(c, W, H, ['#ff9a8b', '#ff6a88', '#ff99ac'], 120),
       font: 'Be Vietnam Pro', weight: 800, color: '#111', box: { fill: '#fff', pad: 0.32, radius: 0.22 }, lineHeight: 1.42,
     },
     {
-      id: 'tiktok', name: 'TikTok',
+      id: 'tiktok', cat: 'Phổ biến', name: 'TikTok',
       bg: (c, W, H) => solid(c, W, H, '#010101'),
       font: 'Montserrat', weight: 900, color: '#fff', glitch: true, lineHeight: 1.2, upper: true,
     },
     {
-      id: 'neon', name: 'Neon',
+      id: 'neon', cat: 'Nổi bật', name: 'Neon',
       bg: (c, W, H) => {
         solid(c, W, H, '#05040f');
         const g = c.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, Math.max(W, H) * 0.6);
@@ -39,27 +39,27 @@
       font: 'Montserrat', weight: 900, color: '#fff', shadow: { color: '#0ff', blur: 0.45 }, lineHeight: 1.25,
     },
     {
-      id: 'quote', name: 'Quote',
+      id: 'quote', cat: 'Trích dẫn', name: 'Quote',
       bg: (c, W, H) => solid(c, W, H, '#f4eee4'),
       font: 'Playfair Display', weight: 700, italic: true, color: '#2b2b2b', align: 'left', lineHeight: 1.3, quote: '#c9a27a', handleColor: '#7a6a58',
     },
     {
-      id: 'bold', name: 'Bold vàng',
+      id: 'bold', cat: 'Nổi bật', name: 'Bold vàng',
       bg: (c, W, H) => solid(c, W, H, '#ffd400'),
       font: 'Montserrat', weight: 900, color: '#111', upper: true, lineHeight: 1.15, handleColor: '#111',
     },
     {
-      id: 'sunset', name: 'Sunset',
+      id: 'sunset', cat: 'Phổ biến', name: 'Sunset',
       bg: (c, W, H) => linear(c, W, H, ['#f12711', '#f5af19'], 200),
       font: 'Be Vietnam Pro', weight: 800, color: '#fff', shadow: { color: 'rgba(0,0,0,0.45)', blur: 0.2, y: 0.06 }, lineHeight: 1.25,
     },
     {
-      id: 'ocean', name: 'Ocean',
+      id: 'ocean', cat: 'Tối giản', name: 'Ocean',
       bg: (c, W, H) => linear(c, W, H, ['#0f2027', '#203a43', '#2c5364']),
       font: 'Be Vietnam Pro', weight: 700, color: '#fff', box: { fill: 'rgba(0,0,0,0.55)', pad: 0.3, radius: 0.15 }, lineHeight: 1.45,
     },
     {
-      id: 'note', name: 'Ghi chú',
+      id: 'note', cat: 'Bài học', name: 'Ghi chú',
       bg: (c, W, H) => {
         solid(c, W, H, '#fffdf3');
         c.strokeStyle = 'rgba(70,130,200,0.25)'; c.lineWidth = Math.max(1, W / 540);
@@ -69,9 +69,82 @@
       font: 'Be Vietnam Pro', weight: 600, color: '#1d2433', align: 'left', lineHeight: 1.35, handleColor: '#555',
     },
     {
-      id: 'mono', name: 'Hacker',
+      id: 'mono', cat: 'Nổi bật', name: 'Hacker',
       bg: (c, W, H) => solid(c, W, H, '#0b1410'),
       font: 'Roboto Mono', weight: 700, color: '#39ff88', align: 'left', shadow: { color: 'rgba(57,255,136,0.6)', blur: 0.25 }, lineHeight: 1.35, cursor: true,
+    },
+    {
+      id: 'news', cat: 'Tin tức', name: 'Tin nóng',
+      bg: (c, W, H) => {
+        linear(c, W, H, ['#1a0006', '#4a0010'], 90);
+        c.fillStyle = '#e11d48'; c.fillRect(0, H * 0.1, W, H * 0.055);
+        c.fillStyle = '#fff'; c.font = `900 ${Math.round(H * 0.032)}px Montserrat, sans-serif`;
+        c.textBaseline = 'middle'; c.textAlign = 'left'; c.fillText('● TIN NÓNG', W * 0.06, H * 0.1275);
+      },
+      font: 'Montserrat', weight: 900, color: '#fff', upper: true, box: { fill: 'rgba(225,29,72,0.92)', pad: 0.28, radius: 0.05 }, lineHeight: 1.4,
+    },
+    {
+      id: 'sale', cat: 'Bán hàng', name: 'Sale sốc',
+      bg: (c, W, H) => {
+        linear(c, W, H, ['#ff512f', '#dd2476'], 135);
+        c.fillStyle = 'rgba(255,255,255,0.08)';
+        for (let i = -H; i < W + H; i += W * 0.12) { c.beginPath(); c.moveTo(i, 0); c.lineTo(i + W * 0.05, 0); c.lineTo(i + W * 0.05 - H, H); c.lineTo(i - H, H); c.fill(); }
+      },
+      font: 'Montserrat', weight: 900, color: '#ffe600', stroke: { color: '#3b0016', w: 0.16 }, upper: true, lineHeight: 1.15, handleColor: '#fff',
+    },
+    {
+      id: 'product', cat: 'Bán hàng', name: 'Sản phẩm',
+      bg: (c, W, H) => {
+        solid(c, W, H, '#f6f1ea');
+        c.fillStyle = '#111'; c.fillRect(0, H * 0.86, W, H * 0.14);
+        c.strokeStyle = '#111'; c.lineWidth = W * 0.008; c.strokeRect(W * 0.05, H * 0.04, W * 0.9, H * 0.78);
+      },
+      font: 'Montserrat', weight: 900, color: '#111', lineHeight: 1.2, handleColor: '#fff',
+    },
+    {
+      id: 'lesson', cat: 'Bài học', name: 'Bảng đen',
+      bg: (c, W, H) => {
+        solid(c, W, H, '#7a4b24');
+        const m = W * 0.045;
+        const g = c.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, Math.max(W, H) * 0.7);
+        g.addColorStop(0, '#2f5a43'); g.addColorStop(1, '#1d3a2b');
+        c.fillStyle = g; c.fillRect(m, m, W - 2 * m, H - 2 * m);
+        c.fillStyle = 'rgba(255,255,255,0.05)';
+        for (let i = 0; i < 40; i++) c.fillRect(m + ((i * 977) % (W - 2 * m)), m + ((i * 613) % (H - 2 * m)), W * 0.08, H * 0.002);
+      },
+      font: 'Be Vietnam Pro', weight: 700, color: '#f8fafc', lineHeight: 1.35, shadow: { color: 'rgba(255,255,255,0.25)', blur: 0.08 }, handleColor: '#e2e8f0',
+    },
+    {
+      id: 'pastel', cat: 'Tối giản', name: 'Pastel',
+      bg: (c, W, H) => linear(c, W, H, ['#fbc2eb', '#a6c1ee'], 160),
+      font: 'Be Vietnam Pro', weight: 800, color: '#3b2f4a', lineHeight: 1.3, handleColor: '#3b2f4a',
+    },
+    {
+      id: 'clean', cat: 'Tối giản', name: 'Trắng gọn',
+      bg: (c, W, H) => solid(c, W, H, '#fafafa'),
+      font: 'Be Vietnam Pro', weight: 600, color: '#111', align: 'left', lineHeight: 1.35, handleColor: '#666',
+    },
+    {
+      id: 'romance', cat: 'Trích dẫn', name: 'Lãng mạn',
+      bg: (c, W, H) => linear(c, W, H, ['#3a1c71', '#d76d77', '#ffaf7b'], 200),
+      font: 'Lobster', weight: 400, color: '#fff', shadow: { color: 'rgba(0,0,0,0.35)', blur: 0.18, y: 0.05 }, lineHeight: 1.35,
+    },
+    {
+      id: 'darkquote', cat: 'Trích dẫn', name: 'Quote tối',
+      bg: (c, W, H) => solid(c, W, H, '#121212'),
+      font: 'Playfair Display', weight: 700, italic: true, color: '#f5f5f5', align: 'left', lineHeight: 1.3, quote: '#d4af37', handleColor: '#d4af37',
+    },
+    {
+      id: 'aurora', cat: 'Nổi bật', name: 'Aurora',
+      bg: (c, W, H) => {
+        solid(c, W, H, '#070b1a');
+        for (const [x, y, r, col] of [[0.2, 0.25, 0.6, 'rgba(34,211,238,0.45)'], [0.85, 0.45, 0.55, 'rgba(168,85,247,0.45)'], [0.35, 0.85, 0.6, 'rgba(16,185,129,0.4)']]) {
+          const g = c.createRadialGradient(W * x, H * y, 0, W * x, H * y, Math.max(W, H) * r);
+          g.addColorStop(0, col); g.addColorStop(1, 'rgba(0,0,0,0)');
+          c.fillStyle = g; c.fillRect(0, 0, W, H);
+        }
+      },
+      font: 'Be Vietnam Pro', weight: 800, color: '#fff', shadow: { color: 'rgba(0,0,0,0.5)', blur: 0.15 }, lineHeight: 1.25,
     },
   ];
 
@@ -367,29 +440,26 @@
     drawSlide(canvas.getContext('2d'), size.w, size.h, currentSlide().text, opts(), 1);
   }
 
+  /* ---------------- templates (shared picker: categories, thumbnails, "Mẫu của tôi") ---------------- */
+  const TV_CONTROLS = ['tvFont', 'tvSize', 'tvAlign', 'tvAnim', 'tvBgMode', 'tvBgColor', 'tvHandle', 'tvProgress'];
+  const optsFrom = (set) => ({
+    ...opts(), font: set.tvFont || '', align: set.tvAlign || '', handle: '', maxSize: 150,
+    bgMode: set.tvBgMode && set.tvBgMode !== 'image' ? set.tvBgMode : 'tpl', bgColor: set.tvBgColor || '#000000',
+  });
+  const baseOf = (t) => TEMPLATES.find((x) => x.id === (t.style && t.style.base)) || TEMPLATES[0];
+  let picker = null;
   function renderTemplatePicker() {
-    const box = $('tvTemplates');
-    box.innerHTML = '';
-    const o = { ...opts(), font: '', align: '', handle: '', bgMode: 'tpl', maxSize: 150 };
-    for (const t of TEMPLATES) {
-      const b = document.createElement('button');
-      b.className = t === tpl ? 'active' : '';
-      b.title = t.name;
-      const c = makeCanvas(180, 320);
-      const ctx = c.getContext('2d');
-      ctx.setTransform(1 / 3, 0, 0, 1 / 3, 0, 0); // draw at 540×960, shown at 180×320
-      drawSlide(ctx, 540, 960, 'Xin chào\nTikTok', o, 1, true, t, null);
-      b.appendChild(c);
-      const s = document.createElement('span');
-      s.textContent = t.name;
-      b.appendChild(s);
-      b.onclick = () => {
-        tpl = t;
-        box.querySelectorAll('button').forEach((x) => x.classList.toggle('active', x === b));
-        preview();
-      };
-      box.appendChild(b);
-    }
+    if (picker) return picker.refresh();
+    picker = Templates.mount({
+      box: $('tvTemplates'),
+      key: 'tv',
+      builtins: TEMPLATES.map((t) => ({ id: t.id, name: t.name, cat: t.cat, set: {}, style: { base: t.id } })),
+      thumb: (t, ctx, W, H) => drawSlide(ctx, W, H, 'Xin chào\nTikTok', optsFrom(t.set || {}), 1, true, baseOf(t), null),
+      apply: (t) => { tpl = baseOf(t); preview(); },
+      controls: TV_CONTROLS,
+      captureStyle: () => ({ base: tpl.id }),
+      activeId: tpl.id,
+    });
   }
 
   /* ---------------- events ---------------- */
