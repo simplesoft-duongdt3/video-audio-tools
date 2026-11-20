@@ -214,8 +214,13 @@ test.describe('export path robustness (TikTok stutter / slow export)', () => {
     const pts = execFileSync('ffprobe', ['-v', 'error', '-select_streams', 'v', '-show_entries', 'packet=pts_time', '-of', 'csv=p=0', dl.path])
       .toString().trim().split('\n').map(Number).sort((a, b) => a - b);
     const deltas = new Set(pts.slice(1).map((p, i) => (p - pts[i]).toFixed(4)));
-    expect([...deltas]).toEqual(['0.0333']);
-    expect(pts.length).toBe(90);
+    expect([...deltas]).toEqual(['0.0333']); // the real check: every frame exactly 1/30 s apart (no stutter)
+    // ~3 s × 30 fps. Decoders disagree on an mp3's length by a few ms (encoder padding: WebKit/GStreamer
+    // gives 3.02 s → 91 frames), so the count follows the file's own duration instead of a fixed 90.
+    const dur = probe(dl.path).duration;
+    expect(Math.abs(pts.length - Math.round(dur * 30)), `${pts.length} frames for ${dur}s`).toBeLessThanOrEqual(1);
+    expect(pts.length).toBeGreaterThanOrEqual(89);
+    expect(pts.length).toBeLessThanOrEqual(92);
   });
 
   test('an encoder setting the device rejects is retried on the fast path, not recorded in real time', async ({ page }, ti) => {
