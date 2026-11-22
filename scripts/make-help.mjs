@@ -8,6 +8,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
+import { uiHash } from './ui-hash.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
@@ -198,12 +199,28 @@ async function main() {
   await page.waitForSelector('#avTrim:not([hidden])');
   await page.fill('#avTitle', 'Chiều mưa Sài Gòn');
   await page.fill('#avSub', '@kenh.cua.ban');
-  await page.click('#avTemplates [data-tpl=vinyl]');
-  await page.waitForTimeout(500);
+  await page.click('#avTemplates .chips button:text-is("Sách & Thơ")');
+  await page.click('#avTemplates [data-tpl=sachnoi]');
+  await page.fill('#avTitle', 'Đắc Nhân Tâm');
+  await page.fill('#avSub', 'Chương 1 · Dale Carnegie');
+  await page.waitForTimeout(600);
   await scrollTo('#avTemplates');
-  await shot('av-template', [['#avTemplates .templates', 1], ['#avTitle', 2], ['#avSub', 3]]);
+  await shot('av-template', [['#avTemplates .chips', 1], ['#avTemplates .templates', 2]]);
+  await scrollTo('#avTitle');
+  await shot('av-text', [['#avTitle', 1], ['#avSub', 2], ['#avBadge', 3]]);
+  await page.click('#avPalettes [data-pal=tra-sua]');
+  await page.waitForTimeout(400);
+  await scrollTo('#avPalettes');
+  await shot('av-colors', [['#avPalettes .chips', 1], ['#avPalettes .pal-row', 2]]);
+  await page.click('#avTemplates .chips button:text-is("Tất cả")');
+  await page.click('#avTemplates [data-tpl=vinyl]');
+  await page.fill('#avTitle', 'Chiều mưa Sài Gòn');
+  await page.fill('#avSub', '@kenh.cua.ban');
+  await page.waitForTimeout(400);
   await scrollTo('#avStyle');
-  await shot('av-style', [['#avStyle', 1], ['.drop[data-input=avImg]', 2], ['#avTrim .trim-wave', 3]]);
+  await shot('av-style', [['#avStyle', 1], ['#avBgMode', 2]]);
+  await scrollTo('.drop[data-input=avImg]');
+  await shot('av-cover', [['.drop[data-input=avImg]', 1], ['#avTrim .trim-wave', 2]]);
 
   // --- remove silences (voice recording with pauses) ---
   await page.setInputFiles('#avAudio', voiceNote());
@@ -260,6 +277,7 @@ function page_(s) {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
+<meta name="ui-hash" content="${uiHash()}">
 <title>Hướng dẫn dùng Media Toolbox trên iPhone</title>
 <meta name="description" content="Hướng dẫn từng bước làm video TikTok / Reels từ ảnh, chữ và nhạc ngay trên iPhone với Media Toolbox.">
 <style>
@@ -367,7 +385,7 @@ function page_(s) {
     <li>Lọc mẫu theo nhóm <span class="n">1</span> (Trích dẫn, Bài học, Tin tức, Bán hàng…) rồi vuốt hàng mẫu và chạm để chọn <span class="n">2</span>. Kéo thanh <b>Xem slide</b> dưới khung xem trước để xem từng slide.</li>
   </ol>
   ${fig(s['tv-text'], 'Nhóm mẫu (1) và hàng mẫu (2)')}
-  <ol start="3">
+  <ol>
     <li>Chọn nhạc <span class="n">1</span> (không bắt buộc) — thời lượng nhạc được chia đều cho các slide.</li>
     <li>Bấm <b>Xuất video</b> <span class="n">2</span>, hoặc tải từng slide thành <b>ảnh PNG / .zip</b> <span class="n">3</span> để đăng dạng ảnh.</li>
   </ol>
@@ -377,16 +395,26 @@ function page_(s) {
 <section id="nhac-video">
   <h2>5. Chỉ có nhạc → video</h2>
   <p>Tab <b>🎧 Audio → Video</b>. Biến bài hát, podcast, ghi âm thành video có sóng nhạc chuyển động.</p>
-  <ol>
-    <li>Chọn file nhạc, rồi chọn mẫu <span class="n">1</span>: TikTok Neon, Lo-fi, Podcast, Đĩa than, Karaoke…</li>
-    <li>Gõ <b>Tên bài</b> <span class="n">2</span> và <b>dòng phụ</b> (ca sĩ / @kênh) <span class="n">3</span>.</li>
-  </ol>
-  ${fig(s['av-template'], 'Mẫu (1), tên bài (2), dòng phụ (3)')}
-  <ol start="3">
-    <li>Đổi <b>kiểu sóng nhạc</b> <span class="n">1</span> nếu muốn, thêm <b>ảnh bìa</b> <span class="n">2</span> (không bắt buộc).</li>
-    <li>Chọn <b>đoạn nhạc</b> <span class="n">3</span> — bài dài trên 5 phút nên chọn đoạn ngắn để iPhone không bị thiếu bộ nhớ.</li>
-  </ol>
-  ${fig(s['av-style'], 'Kiểu sóng nhạc (1), ảnh bìa (2), đoạn nhạc (3)')}
+  <h3>Chọn mẫu theo thể loại</h3>
+  <p>Chọn nhóm <span class="n">1</span> rồi chọn mẫu <span class="n">2</span>. Có 23 mẫu theo thể loại:</p>
+  <ul>
+    <li><b>Sách &amp; Thơ:</b> Sách nói (bìa sách), Bài học từ sách, Đọc thơ (nền giấy, chữ viết tay).</li>
+    <li><b>Podcast &amp; Radio:</b> Podcast, Podcast sáng, Radio đêm (● ON AIR), Bản tin.</li>
+    <li><b>Chữa lành &amp; Thư giãn:</b> Chữa lành, Ngủ ngon, ASMR — sóng nhạc chuyển động chậm, êm.</li>
+    <li><b>Học tập:</b> Lofi học bài, Học tiếng Anh. <b>Kể chuyện:</b> Truyện ma, Bé nghe truyện. <b>Tâm linh:</b> Pháp thoại.</li>
+    <li><b>Âm nhạc:</b> TikTok Neon, Lo-fi, Đĩa than, Karaoke…</li>
+  </ul>
+  ${fig(s['av-template'], 'Nhóm thể loại (1) và mẫu (2)')}
+  <p>Gõ <b>Tên bài</b> <span class="n">1</span> và <b>dòng phụ</b> <span class="n">2</span> (ô trống sẽ gợi ý theo thể loại, ví dụ “Chương 1 · Tên tác giả”). <b>Nhãn trên cùng</b> <span class="n">3</span> như “SÁCH NÓI”, “TẬP 12” được điền sẵn theo mẫu — sửa hoặc xoá tuỳ ý.</p>
+  ${fig(s['av-text'], 'Tên bài (1), dòng phụ (2), nhãn trên cùng (3)')}
+  <h3>Chọn bộ màu</h3>
+  <p>Không cần biết mã màu: chọn tâm trạng <span class="n">1</span> (Tối, Sáng &amp; Pastel, Rực rỡ, Lễ hội) rồi chạm vào một <b>bộ màu</b> <span class="n">2</span> như Trà sữa, Bạc hà, Đêm Sài Gòn, Tết… Bộ màu chỉ đổi màu, giữ nguyên kiểu của mẫu, và luôn đảm bảo chữ dễ đọc. Muốn tự chọn mã màu thì mở <b>Tự chọn mã màu</b>.</p>
+  ${fig(s['av-colors'], 'Tâm trạng (1) và bộ màu (2)')}
+  <h3>Sóng nhạc, nền, ảnh bìa, đoạn nhạc</h3>
+  <p>Đổi <b>kiểu sóng nhạc</b> <span class="n">1</span> và kiểu <b>nền</b> <span class="n">2</span> (chuyển màu, một màu, hoặc ảnh bìa làm nền mờ) nếu muốn.</p>
+  ${fig(s['av-style'], 'Kiểu sóng nhạc (1) và nền (2)')}
+  <p>Thêm <b>ảnh bìa</b> <span class="n">1</span> (không bắt buộc — mẫu Sách nói hiện ảnh thành bìa sách). Chọn <b>đoạn nhạc</b> <span class="n">2</span> — bài dài trên 5 phút nên chọn đoạn ngắn để iPhone không bị thiếu bộ nhớ.</p>
+  ${fig(s['av-cover'], 'Ảnh bìa (1) và đoạn nhạc (2)')}
   <h3>Bỏ đoạn im lặng thừa (ghi âm, podcast, bài giảng)</h3>
   <ol>
     <li>Dưới sóng nhạc, bấm <b>✂️ Tìm đoạn im lặng thừa</b>. Các đoạn im lặng ở <b>đầu bài</b>, <b>cuối bài</b> và các <b>khoảng lặng dài</b> được tô đỏ trên sóng nhạc <span class="n">1</span>.</li>

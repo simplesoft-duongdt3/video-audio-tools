@@ -328,9 +328,21 @@ test('every slideshow filter option in index.html is implemented by Core.applyFi
 
 test('avGeometry: art, title block, visualizer and time bar never overlap, at every size × layout × style', () => {
   const sizes = [[1080, 1920], [720, 1280], [1080, 1350], [1080, 1080], [1920, 1080], [1280, 720]];
-  for (const [W, H] of sizes) for (const layout of ['cover', 'top', 'minimal']) for (const style of ['bars', 'circle', 'overview']) {
-    const g = C.avGeometry(W, H, layout, style);
-    const id = `${W}×${H} ${layout} ${style}`;
+  for (const [W, H] of sizes) for (const layout of ['cover', 'top', 'minimal']) for (const style of ['bars', 'circle', 'overview']) for (const badge of [false, true]) for (const titleScale of [1, 1.3]) {
+    const g = C.avGeometry(W, H, layout, style, { badge, titleScale });
+    const id = `${W}×${H} ${layout} ${style}${badge ? ' +badge' : ''} ×${titleScale}`;
+    if (badge) {
+      assert.ok(g.zones.badge, id);
+      assert.ok(g.zones.badge[1] <= g.zones.text[0] && (!g.zones.art || g.noArt || g.zones.colX || g.zones.badge[1] <= g.zones.art[0]) && g.zones.badge[1] <= g.zones.vis[0], `${id}: badge on top ${g.zones.badge}`);
+    }
+    if (H > W * 1.6) {
+      // TikTok safe zone: nothing important in the bottom 22 % or the top 6 %
+      for (const k of ['text', 'vis', 'prog', ...(badge ? ['badge'] : [])]) {
+        assert.ok(g.zones[k][1] <= H * 0.78 + 1 && g.zones[k][0] >= H * 0.06 - 1, `${id}: ${k} ${g.zones[k]} inside the safe zone`);
+      }
+      if (badge) assert.ok(g.zones.badge[0] >= H * 0.1 - 1, `${id}: label below TikTok's top bar`);
+      assert.ok(g.vx + g.vw <= W * 0.86 + 1 && g.tx + g.tw <= W * 0.86 + 1, `${id}: clear of TikTok's right-hand icons`);
+    }
     const z = g.zones;
     for (const k of ['text', 'vis', 'prog', 'art']) {
       assert.ok(z[k][0] >= 0 && z[k][1] <= H, `${id}: ${k} ${z[k]} inside 0..${H}`);
@@ -349,8 +361,13 @@ test('avGeometry: art, title block, visualizer and time bar never overlap, at ev
     }
     assert.ok(g.A >= 40 * g.u, `${id}: art not degenerate (${g.A})`);
   }
-  // the 9:16 cover layout keeps its big art
+  // the 9:16 cover layout keeps its big art (even inside the safe zone)
   assert.ok(C.avGeometry(1080, 1920, 'cover', 'bars').A >= 600);
+  // deliberate trade-offs of the TikTok safe zone (content 6/10 %–78 % high, 14 %–86 % wide):
+  // a top label and the circle style's rays (1.44·A) leave a smaller cover — still clearly visible
+  assert.ok(C.avGeometry(1080, 1920, 'cover', 'bars', { badge: true }).A >= 400);
+  assert.ok(C.avGeometry(1080, 1920, 'cover', 'circle').A >= 400);
+  assert.ok(C.avGeometry(1080, 1920, 'cover', 'circle', { badge: true }).A >= 240);
 });
 
 test('friendlyError: decode failures vs encoder failures are told apart', () => {
@@ -418,4 +435,21 @@ test('silenceCuts keeps a natural pause around speech; removeRanges shortens wit
   assert.equal(x[0], C.removeRanges([x], sr, [])[0][0], 'no cuts = same samples');
   // overlapping / out-of-range cuts are tolerated
   assert.equal(C.removeRanges([x], sr, [{ from: -1, to: 0.5 }, { from: 0.4, to: 0.6 }, { from: 2.9, to: 9 }])[0].length, Math.round(2.3 * sr));
+});
+
+test('colour sets: every one is readable (WCAG) and well-formed', () => {
+  assert.ok(C.PALETTES.length >= 24);
+  const ids = new Set();
+  for (const p of C.PALETTES) {
+    assert.ok(!ids.has(p.id), 'unique id ' + p.id); ids.add(p.id);
+    for (const c of [p.c1, p.c2, p.ink, ...p.bg]) assert.match(c, /^#[0-9a-f]{6}$/, `${p.id}: ${c}`);
+    for (const b of p.bg) {
+      assert.ok(C.contrast(p.ink, b) >= 4.5, `${p.name}: text ${p.ink} on ${b} = ${C.contrast(p.ink, b).toFixed(2)} (needs 4.5)`);
+      assert.ok(C.contrast(p.c1, b) >= 3, `${p.name}: colour 1 ${p.c1} on ${b} = ${C.contrast(p.c1, b).toFixed(2)} (needs 3)`);
+      assert.ok(C.contrast(p.c2, b) >= 3, `${p.name}: colour 2 ${p.c2} on ${b} = ${C.contrast(p.c2, b).toFixed(2)} (needs 3)`);
+    }
+    assert.ok(p.name && p.mood);
+  }
+  assert.ok(new Set(C.PALETTES.map((p) => p.mood)).size >= 4);
+  assert.equal(C.contrast('#000000', '#ffffff').toFixed(0), '21');
 });

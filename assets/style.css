@@ -263,3 +263,33 @@ details.ios-only > summary { cursor: pointer; font-weight: 600; min-height: 44px
 .sil-list li { border-bottom: 1px solid var(--line); }
 .sil-list label.check { margin: 0; }
 .sil-done { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; font-size: 0.9rem; }
+
+/* colour sets */
+.pal-picker { margin-bottom: 8px; }
+.pal-picker .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.pal-picker .chips button { min-height: 44px; padding: 4px 12px; font-size: 0.8rem; border-radius: 999px; }
+.pal-picker .chips button.active { border-color: var(--accent2); color: var(--accent2); }
+.pal-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 8px; }
+.pal { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 4px; min-height: 44px; background: transparent; border: 2px solid transparent; border-radius: 12px; }
+.pal.active { border-color: var(--accent2); }
+.pal-chip { position: relative; display: flex; align-items: flex-end; gap: 3px; width: 64px; height: 46px; padding: 6px; border-radius: 10px; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.12); }
+.pal-chip i { display: block; width: 7px; border-radius: 3px; }
+.pal-chip i:nth-child(1) { height: 70%; }
+.pal-chip i:nth-child(2) { height: 45%; }
+.pal-chip b { position: absolute; right: 7px; top: 4px; font-size: 0.85rem; }
+.pal-name { font-size: 0.72rem; color: var(--muted); text-align: center; line-height: 1.2; }
+.pal.active .pal-name { color: var(--text); font-weight: 600; }
+.swatches { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; flex-basis: 100%; margin-top: 4px; }
+.swatches .sw { flex: 0 0 44px; width: 44px; height: 44px; min-height: 44px; padding: 0; border-radius: 50%; border: 2px solid var(--line); }
+@media (max-width: 640px) {
+  .swatches { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }
+  .pal-row { display: flex; overflow-x: auto; scroll-snap-type: x proximity; padding-bottom: 6px; }
+  .pal { flex: 0 0 80px; scroll-snap-align: start; }
+}
+
+.swatches .sw.active { border-color: var(--accent2); box-shadow: 0 0 0 2px var(--accent2); }
+/* phones: category / mood chips in one scrolling row (they took 3 rows before the first template) */
+@media (max-width: 640px) {
+  .tpl-picker .chips, .pal-picker .chips { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
+  .tpl-picker .chips button, .pal-picker .chips button { flex: 0 0 auto; white-space: nowrap; }
+}

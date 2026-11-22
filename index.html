@@ -7,9 +7,9 @@
 <meta name="description" content="Công cụ xử lý ảnh, audio, video chạy hoàn toàn trên trình duyệt — không upload, không backend.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600;800&family=Montserrat:wght@700;900&family=Playfair+Display:ital,wght@0,700;1,700&family=Lobster&family=Roboto+Mono:wght@700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600;800&family=Montserrat:wght@700;900&family=Playfair+Display:ital,wght@0,700;1,700&family=Lobster&family=Roboto+Mono:wght@700&family=Lora:ital,wght@0,600;1,600&family=Noto+Serif:wght@600;800&family=Dancing+Script:wght@700&family=Baloo+2:wght@800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css">
-<link rel="stylesheet" href="assets/style.css?v=718fef09e5">
+<link rel="stylesheet" href="assets/style.css?v=87be611461">
 <!-- Mediabunny (MP4 + H.264/AAC encoding) is loaded on demand as an ES module; the AAC extension imports "mediabunny" too. -->
 <script type="importmap">{ "imports": { "mediabunny": "https://cdn.jsdelivr.net/npm/mediabunny@1.65.2/dist/bundles/mediabunny.min.mjs" } }</script>
 </head>
@@ -177,6 +177,7 @@
           </select>
         </label>
         <label>Màu nền <input type="color" id="ivBg" value="#000000"></label>
+        <div class="swatches" data-for="ivBg" data-mode="ivFit" data-mode-value="contain" data-mode-ok="contain,polaroid" aria-label="Màu nền gợi ý"></div>
       </div>
       <div class="row tight">
         <label>Hiệu ứng
@@ -262,6 +263,7 @@ Bắt đầu từ hôm nay nhé! 📚</textarea>
           <select id="tvBgMode"><option value="tpl">Theo mẫu</option><option value="color">Màu</option><option value="image">Ảnh</option></select>
         </label>
         <label>Màu <input type="color" id="tvBgColor" value="#111111"></label>
+        <div class="swatches" data-for="tvBgColor" data-mode="tvBgMode" data-mode-value="color" data-mode-ok="color" aria-label="Màu nền gợi ý"></div>
       </div>
       <label class="drop small" data-input="tvBgImg" id="tvBgImgWrap" hidden>
         <input type="file" id="tvBgImg" accept="image/*,.heic,.heif" hidden>
@@ -315,6 +317,7 @@ Bắt đầu từ hôm nay nhé! 📚</textarea>
         <label>Tên bài <input type="text" id="avTitle" placeholder="Tự lấy theo tên file"></label>
         <label>Dòng phụ (ca sĩ / @handle) <input type="text" id="avSub" placeholder="@yourname"></label>
       </div>
+      <label>Nhãn trên cùng (không bắt buộc) <input type="text" id="avBadge" maxlength="24" placeholder="VD: SÁCH NÓI · CHƯƠNG 3"></label>
       <div class="row tight">
         <label>Kiểu sóng nhạc
           <select id="avStyle">
@@ -326,19 +329,25 @@ Bắt đầu từ hôm nay nhé! 📚</textarea>
             <option value="none">Không</option>
           </select>
         </label>
-        <label>Màu 1 <input type="color" id="avColor1" value="#25f4ee"></label>
-        <label>Màu 2 <input type="color" id="avColor2" value="#fe2c55"></label>
-      </div>
-      <div class="row tight">
         <label>Nền
           <select id="avBgMode">
-            <option value="gradient">Gradient tối</option>
-            <option value="color">Màu</option>
-            <option value="image">Ảnh (nền mờ + ảnh bìa)</option>
+            <option value="gradient">Chuyển màu</option>
+            <option value="color">Một màu</option>
+            <option value="image">Ảnh bìa làm nền (mờ)</option>
           </select>
         </label>
-        <label>Màu nền <input type="color" id="avBgColor" value="#101018"></label>
       </div>
+      <div class="glabel">Bộ màu</div>
+      <p class="hint tpl-hint">Đổi màu cho mẫu đang chọn — chọn mẫu khác sẽ về màu của mẫu đó.</p>
+      <div class="pal-picker" id="avPalettes"></div>
+      <details class="adv">
+        <summary>Tự chọn mã màu</summary>
+        <div class="row tight">
+          <label>Màu sóng 1 <input type="color" id="avColor1" value="#25f4ee"></label>
+          <label>Màu sóng 2 <input type="color" id="avColor2" value="#fe2c55"></label>
+          <label>Màu nền <input type="color" id="avBgColor" value="#101018"></label>
+        </div>
+      </details>
       <label class="drop small" data-input="avImg">
         <input type="file" id="avImg" accept="image/*,.heic,.heif" hidden>
         <span>🖼️ Ảnh bìa (không bắt buộc)</span>
@@ -409,17 +418,18 @@ Bắt đầu từ hôm nay nhé! 📚</textarea>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/1.0.11/pako.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/upng-js@2.1.0/UPNG.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js" defer></script>
-<script src="js/core.js?v=5044df2ca5"></script>
+<script src="js/core.js?v=8b18d76abf"></script>
 <script src="js/common.js?v=26bb3543b1"></script>
 <script src="js/convert.js?v=a892107986"></script>
 <script src="js/compress.js?v=c9854c750d"></script>
 <script src="js/editor.js?v=ed5bd6831c"></script>
 <script src="js/trim.js?v=fcc830357e"></script>
+<script src="js/palettes.js?v=6547f6230e"></script>
 <script src="js/templates.js?v=efe79e3f4f"></script>
 <script src="js/video-engine.js?v=0743c66684"></script>
 <script src="js/image-video.js?v=1562e67974"></script>
 <script src="js/text-video.js?v=bba5c217f0"></script>
-<script src="js/audio-video.js?v=d936a30028"></script>
+<script src="js/audio-video.js?v=13e24ff3bb"></script>
 <script src="js/selftest.js?v=ff89eecc2a"></script>
 </body>
 </html>

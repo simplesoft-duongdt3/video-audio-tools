@@ -92,3 +92,10 @@ test('iPhone guide is one self-contained file: images embedded, no external reso
   assert.match(g, /name="viewport"/);
   assert.match(g, /href="\.\.\/index\.html"/, 'links back to the app');
 });
+
+test('PROJECT RULE: when the UI changes, the iPhone guide must be regenerated (`npm run help`)', async () => {
+  const { uiHash, guideHash } = await import('../../scripts/ui-hash.mjs');
+  const g = guideHash();
+  assert.ok(g, 'Help/huong-dan-iphone.html has no ui-hash: run `npm run help`');
+  assert.equal(g, uiHash(), 'index.html / js / css changed since Help/huong-dan-iphone.html was generated → update the guide text in scripts/make-help.mjs if a feature changed, then run `npm run help`');
+});

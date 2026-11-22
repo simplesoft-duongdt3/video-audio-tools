@@ -21,17 +21,42 @@
   /* ---------------- templates ---------------- */
   /** Look = what a template sets that has no control: fonts, text colour, background gradient, layout. */
   const DEFAULT_LOOK = { font: 'Be Vietnam Pro', weight: 800, italic: false, ink: '#ffffff', dim: 'rgba(255,255,255,0.28)', stops: ['#1b1036', '#07070c'], angle: 72, layout: 'cover', glow: true };
-  const T = (id, name, cat, set, look) => ({ id, name, cat, set, style: look }); // only what the look needs: the user's other choices stay
+  // set: control values (the user can still change them) · look: what has no control.
+  // Genre templates follow the research in the commit message (palettes / fonts / motion per genre, VN market).
+  const T = (id, name, cat, set, look) => ({ id, name, cat, set: { avBadge: '', ...set }, style: look });
+  const MUSIC = 'Âm nhạc', BOOK = 'Sách & Thơ', TALK = 'Podcast & Radio', CALM = 'Chữa lành & Thư giãn', LEARN = 'Học tập', STORY = 'Kể chuyện', FAITH = 'Tâm linh';
+  const G = (avStyle, avColor1, avColor2, bg) => ({ avStyle, avColor1, avColor2, ...(bg.startsWith('#') ? { avBgMode: 'color', avBgColor: bg } : { avBgMode: 'gradient' }) });
   const AV_TEMPLATES = [
-    T('neon', 'TikTok Neon', 'Phổ biến', { avStyle: 'bars', avColor1: '#25f4ee', avColor2: '#fe2c55', avBgMode: 'gradient' }, {}),
-    T('lofi', 'Lo-fi', 'Chill', { avStyle: 'mirror', avColor1: '#c084fc', avColor2: '#f9a8d4', avBgMode: 'gradient' }, { stops: ['#2e1065', '#831843'], angle: 120 }),
-    T('podcast', 'Podcast', 'Giọng nói', { avStyle: 'wave', avColor1: '#fbbf24', avColor2: '#f97316', avBgMode: 'gradient' }, { font: 'Montserrat', weight: 900, stops: ['#111827', '#030712'], layout: 'top' }),
-    T('vinyl', 'Đĩa than', 'Phổ biến', { avStyle: 'circle', avColor1: '#fde68a', avColor2: '#f59e0b', avBgMode: 'gradient' }, { font: 'Playfair Display', weight: 700, italic: true, stops: ['#292524', '#0c0a09'] }),
-    T('ocean', 'Biển xanh', 'Chill', { avStyle: 'wave', avColor1: '#67e8f9', avColor2: '#3b82f6', avBgMode: 'gradient' }, { stops: ['#0c4a6e', '#082f49'], angle: 100, layout: 'minimal' }),
-    T('sunset', 'Hoàng hôn', 'Chill', { avStyle: 'bars', avColor1: '#fde047', avColor2: '#fb7185', avBgMode: 'gradient' }, { font: 'Playfair Display', weight: 700, italic: true, stops: ['#9a3412', '#4c0519'], angle: 90 }),
-    T('karaoke', 'Karaoke', 'Phổ biến', { avStyle: 'overview', avColor1: '#fe2c55', avColor2: '#25f4ee', avBgMode: 'gradient' }, { font: 'Montserrat', weight: 900, stops: ['#18181b', '#000000'], layout: 'minimal' }),
-    T('paper', 'Tối giản sáng', 'Giọng nói', { avStyle: 'overview', avColor1: '#111111', avColor2: '#555555', avBgMode: 'color', avBgColor: '#f4f1ea' }, { ink: '#111111', dim: 'rgba(0,0,0,0.16)', glow: false, layout: 'minimal' }),
-    T('hacker', 'Hacker', 'Nổi bật', { avStyle: 'bars', avColor1: '#39ff88', avColor2: '#16a34a', avBgMode: 'color', avBgColor: '#0b1410' }, { font: 'Roboto Mono', weight: 700, ink: '#39ff88', dim: 'rgba(57,255,136,0.22)', layout: 'top' }),
+    // music
+    T('neon', 'Neon', MUSIC, G('bars', '#25f4ee', '#fe2c55', 'g'), {}),
+    T('lofi', 'Lo-fi', MUSIC, G('mirror', '#c084fc', '#f9a8d4', 'g'), { stops: ['#2e1065', '#831843'], angle: 120 }),
+    T('vinyl', 'Đĩa than', MUSIC, G('circle', '#fde68a', '#f59e0b', 'g'), { font: 'Playfair Display', weight: 700, italic: true, stops: ['#292524', '#0c0a09'] }),
+    T('ocean', 'Biển xanh', MUSIC, G('wave', '#67e8f9', '#3b82f6', 'g'), { stops: ['#0c4a6e', '#082f49'], angle: 100, layout: 'minimal' }),
+    T('sunset', 'Hoàng hôn', MUSIC, G('bars', '#fde047', '#fb7185', 'g'), { font: 'Playfair Display', weight: 700, italic: true, stops: ['#9a3412', '#4c0519'], angle: 90 }),
+    T('karaoke', 'Karaoke', MUSIC, G('overview', '#fe2c55', '#25f4ee', 'g'), { font: 'Montserrat', weight: 900, stops: ['#18181b', '#000000'], layout: 'minimal' }),
+    T('hacker', 'Hacker', MUSIC, G('bars', '#39ff88', '#16a34a', '#0b1410'), { font: 'Roboto Mono', weight: 700, ink: '#39ff88', dim: 'rgba(57,255,136,0.22)', layout: 'top' }),
+    // books & poetry
+    T('sachnoi', 'Sách nói', BOOK, { ...G('overview', '#e9c46a', '#b08d57', 'g'), avBadge: 'Sách nói' }, { font: 'Lora', weight: 600, ink: '#f5ecd7', dim: 'rgba(245,236,215,0.22)', stops: ['#3b2a1e', '#1c140e'], angle: 160, glow: false, artShape: 'book', motion: 'calm', subHint: 'Chương 1 · Tên tác giả' }),
+    T('tuduy', 'Bài học từ sách', BOOK, { ...G('overview', '#facc15', '#a3a3a3', '#111111'), avBadge: 'Bài học từ sách' }, { font: 'Montserrat', weight: 900, ink: '#ffffff', dim: 'rgba(255,255,255,0.2)', layout: 'minimal', glow: false, subHint: 'Bài học từ “Tên sách” · @kenh' }),
+    T('doctho', 'Đọc thơ', BOOK, G('wave', '#8b6b4a', '#b08d57', '#f3ead8'), { font: 'Dancing Script', weight: 700, titleScale: 1.3, ink: '#3b2f2f', dim: 'rgba(59,47,47,0.18)', layout: 'minimal', glow: false, texture: 'paper', motion: 'calm', subHint: 'Thơ · Tên tác giả' }),
+    // podcast & radio
+    T('podcast', 'Podcast', TALK, G('wave', '#fbbf24', '#f97316', 'g'), { font: 'Montserrat', weight: 900, stops: ['#111827', '#030712'], layout: 'top', subHint: 'Tập 1 · @kenh', glyph: '🎙' }),
+    T('podsang', 'Podcast sáng', TALK, { ...G('bars', '#dc2626', '#d97706', '#fff4e0'), avBadge: 'Podcast · Tập 12' }, { font: 'Montserrat', weight: 900, ink: '#1f1a17', dim: 'rgba(31,26,23,0.16)', layout: 'top', glow: false, artShape: 'rounded', subHint: 'Tập 12 · Khách mời: Tên', glyph: '🎙' }),
+    T('radiodem', 'Radio đêm', TALK, { ...G('mirror', '#fcd34d', '#f59e0b', 'g'), avBadge: 'On air' }, { font: 'Playfair Display', weight: 700, italic: true, ink: '#fdf6e3', dim: 'rgba(253,246,227,0.2)', stops: ['#14213d', '#05070f'], angle: 180, layout: 'top', badgeDot: true, motion: 'calm', subHint: 'Radio tâm sự · Đêm thứ 12', glyph: '📻' }),
+    T('bantin', 'Bản tin', TALK, { ...G('bars', '#ef4444', '#ffffff', 'g'), avBadge: 'Bản tin' }, { font: 'Be Vietnam Pro', weight: 800, ink: '#ffffff', stops: ['#0b2a5b', '#061430'], angle: 180, layout: 'top', glow: false, badgeDot: true, subHint: 'Bản tin sáng · @kenh', glyph: '📰' }),
+    T('paper', 'Tối giản sáng', TALK, G('overview', '#111111', '#555555', '#f4f1ea'), { ink: '#111111', dim: 'rgba(0,0,0,0.16)', glow: false, layout: 'minimal' }),
+    // calm
+    T('chualanh', 'Chữa lành', CALM, G('wave', '#9d5c7a', '#6d5fa8', 'g'), { font: 'Be Vietnam Pro', weight: 600, ink: '#3b3355', dim: 'rgba(59,51,85,0.18)', stops: ['#f8e1e7', '#e7e3f4'], angle: 160, layout: 'minimal', glow: false, texture: 'grain', motion: 'calm', subHint: 'Gửi bạn, người đang mệt · @kenh' }),
+    T('ngungon', 'Ngủ ngon', CALM, G('wave', '#a5b4fc', '#818cf8', 'g'), { font: 'Be Vietnam Pro', weight: 600, ink: '#cbd5e1', dim: 'rgba(203,213,225,0.15)', stops: ['#1b2838', '#0a1220'], angle: 180, layout: 'minimal', motion: 'calm', subHint: 'Tiếng mưa · 60 phút' }),
+    T('asmr', 'ASMR', CALM, G('mirror', '#f9a8d4', '#c4b5fd', 'g'), { font: 'Montserrat', weight: 700, ink: '#fff1f2', dim: 'rgba(255,241,242,0.2)', stops: ['#3a2233', '#140b12'], angle: 160, layout: 'minimal', motion: 'calm', subHint: 'Thì thầm · Tiếng gõ nhẹ' }),
+    // learning
+    T('lofihoc', 'Lofi học bài', LEARN, G('mirror', '#fcd9b8', '#c9a7eb', 'g'), { font: 'Roboto Mono', weight: 700, ink: '#fff4e6', dim: 'rgba(255,244,230,0.22)', stops: ['#3d2c4f', '#1f2a44'], angle: 150, artShape: 'rounded', texture: 'grain', motion: 'calm', subHint: 'Học cùng mình · 25 phút', glyph: '📚' }),
+    T('tienganh', 'Học tiếng Anh', LEARN, { ...G('overview', '#facc15', '#38bdf8', '#0f172a'), avBadge: 'Bài 3' }, { font: 'Montserrat', weight: 900, ink: '#f8fafc', dim: 'rgba(248,250,252,0.18)', layout: 'top', glow: false, artShape: 'rounded', subHint: 'Bài 3 · Giao tiếp hằng ngày', glyph: '🔤' }),
+    // stories
+    T('truyenma', 'Truyện ma', STORY, { ...G('wave', '#dc2626', '#7f1d1d', 'g'), avBadge: 'Truyện ma' }, { font: 'Noto Serif', weight: 800, ink: '#e7e5e4', dim: 'rgba(220,38,38,0.2)', stops: ['#1c0606', '#000000'], angle: 180, layout: 'minimal', badgeColor: '#f87171', texture: 'grain+vignette', motion: 'calm', subHint: 'Phần 1 · Kể bởi @kenh' }),
+    T('bekechuyen', 'Bé nghe truyện', STORY, { ...G('bars', '#ea580c', '#db2777', 'g'), avBadge: 'Bé nghe truyện' }, { font: 'Baloo 2', weight: 800, ink: '#3b2a7a', dim: 'rgba(59,42,122,0.18)', stops: ['#fff7d6', '#ffe1c7'], angle: 135, glow: false, artShape: 'rounded', subHint: 'Truyện cổ tích · Sọ Dừa', glyph: '🧸' }),
+    // faith
+    T('phatphap', 'Pháp thoại', FAITH, { ...G('overview', '#f5c26b', '#b45309', 'g'), avBadge: 'Pháp thoại' }, { font: 'Noto Serif', weight: 600, ink: '#fbe9c6', dim: 'rgba(251,233,198,0.2)', stops: ['#4a2c12', '#1f1206'], angle: 180, artShape: 'circle', motion: 'calm', subHint: 'Pháp thoại · Tên giảng sư', glyph: '🪷' }),
   ];
   let look = { ...DEFAULT_LOOK };
   const fontOf = (L, px) => `${L.italic ? 'italic ' : ''}${L.weight} ${px}px "${L.font}", "Be Vietnam Pro", sans-serif`;
@@ -46,13 +71,23 @@
       start,
       duration: Core.clipDuration({ start, dur: $('avDur').value, audioDur, fallback: 10 }),
       title: $('avTitle').value.trim() || (audioFile ? baseName(audioFile) : 'Tên bài hát'),
-      sub: $('avSub').value.trim(),
+      sub: $('avSub').value.trim(), // the genre's suggestion is only a placeholder: never burned into the video
+      badge: $('avBadge').value.trim(),
       style: $('avStyle').value,
       c1: $('avColor1').value, c2: $('avColor2').value,
       bgMode: $('avBgMode').value, bgColor: $('avBgColor').value,
       progress: $('avProgress').checked,
-      look,
+      look: readableLook(look, $('avBgMode').value),
     };
+  }
+
+  /**
+   * A cover photo background is drawn blurred and darkened: dark-text templates (light pastel / paper ones)
+   * would be unreadable on it, so text switches to the default light ink there.
+   */
+  function readableLook(L, bgMode) {
+    if (bgMode !== 'image' || !art || Core.luminance(L.ink) > 0.4) return L;
+    return { ...L, ink: DEFAULT_LOOK.ink, dim: DEFAULT_LOOK.dim, badgeColor: undefined };
   }
 
   /* ---------------- geometry ---------------- */
@@ -63,7 +98,7 @@
   function makeAnalyzer(o) {
     const sr = audio ? audio.sampleRate : 48000;
     const win = new Float32Array(FFT);
-    let prev = null, lastT = -1;
+    let prev = null, lastT = -1, prevWave = null, lastWaveT = -1;
     let overview = null;
     return {
       /** {bands, wave, level} for clip time t (seconds from the clip start). */
@@ -77,9 +112,26 @@
         const center = (o.start + t) * sr;
         Core.monoWindow(channels, center, FFT, win);
         const raw = Core.spectrumBands(win, sr, nBands);
-        const bands = Core.smoothBars(prev, raw, t - lastT);
+        const calm = (o.look || DEFAULT_LOOK).motion === 'calm';
+        let bands;
+        if (calm) {
+          // calm genres: bars glide both up AND down (EMA), never jump
+          bands = new Float32Array(raw.length);
+          for (let i = 0; i < raw.length; i++) bands[i] = prev && prev.length === raw.length && t - lastT < 0.25 ? prev[i] + 0.1 * (raw[i] * 0.75 - prev[i]) : raw[i] * 0.75; // ~0.3 s to settle
+        } else bands = Core.smoothBars(prev, raw, t - lastT);
         prev = bands; lastT = t;
-        return { bands, wave: win, level: Math.min(1, Core.rms(win) * 3) };
+        let wave = win;
+        if (calm) {
+          // a stable line: start at a rising zero crossing (no sideways jitter) and blend with the last frame
+          let z = 0;
+          for (let i = 1; i < win.length / 2; i++) if (win[i - 1] < 0 && win[i] >= 0) { z = i; break; }
+          const n = 256, step = Math.floor((win.length - z) / n), cur = new Float32Array(n);
+          for (let i = 0; i < n; i++) cur[i] = win[z + i * step];
+          if (prevWave && t - lastWaveT < 0.25) for (let i = 0; i < n; i++) cur[i] = prevWave[i] * 0.8 + cur[i] * 0.2;
+          prevWave = cur; lastWaveT = t;
+          wave = cur;
+        }
+        return { bands, wave, level: Math.min(1, Core.rms(win) * 3) };
       },
       overview(n) {
         if (!overview || overview.length !== n) {
@@ -155,23 +207,62 @@
     return lg;
   }
 
+  /** Book cover box (2:3) centred in the art square. */
+  const bookBox = (g) => ({ x: g.ax + g.A * 0.17, y: g.ay, w: g.A * 0.66, h: g.A });
+
+  /** Spine shading on the left edge of a book cover. */
+  function spine(ctx, b) {
+    const sg = ctx.createLinearGradient(b.x, 0, b.x + b.w * 0.07, 0);
+    sg.addColorStop(0, 'rgba(0,0,0,0.38)');
+    sg.addColorStop(0.6, 'rgba(255,255,255,0.08)');
+    sg.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = sg;
+    ctx.fillRect(b.x, b.y, b.w * 0.07, b.h);
+  }
+
   function drawArt(ctx, o, g, im, level, round) {
     const { ax, ay, A, u } = g;
     const cx = ax + A / 2, cy = ay + A / 2;
+    const shape = round ? 'circle' : (o.look || DEFAULT_LOOK).artShape || 'square';
     ctx.save();
     if (im) {
       ctx.shadowColor = 'rgba(0,0,0,0.5)';
       ctx.shadowBlur = 40 * u;
       ctx.shadowOffsetY = 14 * u;
-      if (round) { ctx.beginPath(); ctx.arc(cx, cy, A / 2, 0, Math.PI * 2); } else roundRect(ctx, ax, ay, A, A, A * 0.06);
+      const b = shape === 'book' ? bookBox(g) : { x: ax, y: ay, w: A, h: A };
+      if (shape === 'circle') { ctx.beginPath(); ctx.arc(cx, cy, A / 2, 0, Math.PI * 2); } else roundRect(ctx, b.x, b.y, b.w, b.h, shape === 'book' ? A * 0.012 : shape === 'rounded' ? A * 0.1 : A * 0.06);
       ctx.fillStyle = '#000';
       ctx.fill();
       ctx.shadowColor = 'transparent';
       ctx.clip();
-      drawImageFit(ctx, im.img, im.w, im.h, ax, ay, A, A, 'cover');
+      drawImageFit(ctx, im.img, im.w, im.h, b.x, b.y, b.w, b.h, 'cover');
+      if (shape === 'book') spine(ctx, b);
+    } else if (shape === 'book') {
+      // no cover photo: a plain book with the two template colours
+      const b = bookBox(g);
+      const s = 1 + 0.015 * level;
+      ctx.translate(cx, cy); ctx.scale(s, s); ctx.translate(-cx, -cy);
+      ctx.shadowColor = 'rgba(0,0,0,0.5)';
+      ctx.shadowBlur = 30 * u;
+      ctx.shadowOffsetY = 12 * u;
+      const bg = ctx.createLinearGradient(b.x, b.y, b.x + b.w, b.y + b.h);
+      bg.addColorStop(0, o.c1);
+      bg.addColorStop(1, o.c2);
+      ctx.fillStyle = bg;
+      roundRect(ctx, b.x, b.y, b.w, b.h, A * 0.012);
+      ctx.fill();
+      ctx.shadowColor = 'transparent';
+      spine(ctx, b);
+      ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+      ctx.lineWidth = Math.max(1, 2 * u);
+      ctx.strokeRect(b.x + b.w * 0.14, b.y + b.h * 0.1, b.w * 0.74, b.h * 0.8);
+      ctx.font = `${Math.round(A * 0.2)}px "Be Vietnam Pro", sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('📖', b.x + b.w * 0.53, b.y + b.h * 0.5);
     } else {
-      // no cover: a pulsing disc with a note
-      const s = 1 + 0.06 * level;
+      // no cover: a pulsing disc with a note (calm genres barely pulse)
+      const s = 1 + ((o.look || DEFAULT_LOOK).motion === 'calm' ? 0.02 : 0.06) * level;
       ctx.translate(cx, cy);
       ctx.scale(s, s);
       const rg = ctx.createLinearGradient(-A / 2, -A / 2, A / 2, A / 2);
@@ -191,7 +282,7 @@
       ctx.font = `800 ${Math.round(A * 0.34)}px "Be Vietnam Pro", sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('♪', 0, -A * 0.02);
+      ctx.fillText((o.look || DEFAULT_LOOK).glyph || '♪', 0, -A * 0.02); // spoken genres get their own symbol
     }
     ctx.restore();
   }
@@ -204,13 +295,20 @@
     ctx.textBaseline = 'alphabetic';
     const L = o.look || DEFAULT_LOOK;
     ctx.fillStyle = L.ink;
-    const fs = Math.round(64 * u);
-    ctx.font = fontOf(L, fs);
-    const lines = Core.clampLines(ctx, o.title.normalize('NFC'), tw, 2);
+    const fs0 = Math.round(64 * u * (L.titleScale || 1)); // script fonts look small at the same size
+    const title = o.title.normalize('NFC');
+    // long titles (audiobook chapters) shrink first (down to 80 %), "…" only if they still don't fit in 2 lines
+    let fs = fs0, lines;
+    for (;;) {
+      ctx.font = fontOf(L, fs);
+      lines = Core.clampLines(ctx, title, tw, 2);
+      if (!/…$/.test(lines[lines.length - 1] || '') || title.endsWith('…') || fs <= fs0 * 0.8) break;
+      fs = Math.round(fs * 0.92);
+    }
     let y = g.titleY;
     for (const l of lines) { ctx.fillText(l, x, y); y += fs * 1.22; }
     if (o.sub) {
-      ctx.globalAlpha = 0.72;
+      ctx.globalAlpha = 0.85; // ≥ 4.5:1 on mid-tone backgrounds too (QC measured 3.4 at 0.72)
       ctx.font = `600 ${Math.round(38 * u)}px "Be Vietnam Pro", sans-serif`;
       ctx.fillText(Core.clampLines(ctx, o.sub.normalize('NFC'), tw, 1)[0] || '', x, y - fs * 0.2 + 38 * u);
     }
@@ -240,8 +338,12 @@
     ctx.lineJoin = ctx.lineCap = 'round';
     ctx.strokeStyle = grad(ctx, o, g.vx, g.vx + g.vw);
     ctx.beginPath();
+    const calm = (o.look || DEFAULT_LOOK).motion === 'calm';
+    const at = (i) => wave[Math.min(wave.length - 1, Math.max(0, i * step))];
     for (let i = 0; i < n; i++) {
-      const v = Math.max(-1, Math.min(1, wave[i * step] * 1.8));
+      // calm: a gentler line (3-point average, lower amplitude)
+      const raw = calm ? (at(i - 1) + at(i) + at(i + 1)) / 3 * 1.1 : at(i) * 1.8;
+      const v = Math.max(-1, Math.min(1, raw));
       const x = g.vx + (i / (n - 1)) * g.vw;
       const y = mid - v * (g.vh / 2);
       i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
@@ -296,7 +398,7 @@
     ctx.beginPath();
     ctx.arc(vx + vw * frac, y + h / 2, h * 1.4, 0, Math.PI * 2);
     ctx.fill();
-    ctx.font = `600 ${Math.round(30 * u)}px "Be Vietnam Pro", sans-serif`;
+    ctx.font = `600 ${Math.round(34 * u)}px "Be Vietnam Pro", sans-serif`;
     ctx.fillStyle = hexA(ink, 0.8);
     ctx.textBaseline = 'top';
     ctx.textAlign = 'left';
@@ -309,8 +411,75 @@
   /** 0..1 position in the clip; the last frame (drawn at duration − 1/fps) counts as the end. */
   const endFrac = (o, t) => Math.min(1, t / Math.max(1e-3, o.duration - 1 / o.fps));
 
+  /* ---------------- texture (drawn once into the still layer) ---------------- */
+  let noiseTile = null;
+  function noise() {
+    if (noiseTile) return noiseTile;
+    noiseTile = makeCanvas(256, 256);
+    const x = noiseTile.getContext('2d'), d = x.createImageData(256, 256);
+    let seed = 7;
+    for (let i = 0; i < d.data.length; i += 4) {
+      seed = (seed * 16807) % 2147483647; // deterministic: the same grain on every export
+      const v = seed % 256;
+      d.data[i] = d.data[i + 1] = d.data[i + 2] = v;
+      d.data[i + 3] = 255;
+    }
+    x.putImageData(d, 0, 0);
+    return noiseTile;
+  }
+  function drawTexture(ctx, o) {
+    const tex = (o.look || DEFAULT_LOOK).texture || '';
+    const { W, H } = o;
+    if (tex.includes('grain') || tex.includes('paper')) {
+      ctx.save();
+      ctx.globalAlpha = tex.includes('paper') ? 0.05 : 0.07;
+      ctx.globalCompositeOperation = 'overlay';
+      ctx.fillStyle = ctx.createPattern(noise(), 'repeat');
+      ctx.fillRect(0, 0, W, H);
+      ctx.restore();
+    }
+    if (tex.includes('vignette')) {
+      const r = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.3, W / 2, H / 2, Math.hypot(W, H) * 0.6);
+      r.addColorStop(0, 'rgba(0,0,0,0)');
+      r.addColorStop(1, 'rgba(0,0,0,0.55)');
+      ctx.fillStyle = r;
+      ctx.fillRect(0, 0, W, H);
+    }
+  }
+
+  /** Small label at the top ("SÁCH NÓI", "● ON AIR"). The red dot of ON AIR pulses. */
+  function drawBadge(ctx, o, g, t) {
+    if (!o.badge || g.badgeY == null) return;
+    const L = o.look || DEFAULT_LOOK, u = g.u;
+    const text = o.badge.toUpperCase().normalize('NFC');
+    ctx.save();
+    ctx.font = `700 ${Math.round(36 * u)}px "Be Vietnam Pro", sans-serif`;
+    ctx.textBaseline = 'middle';
+    const dot = L.badgeDot ? 22 * u : 0;
+    const tw = Math.min(ctx.measureText(text).width, o.W * 0.7);
+    const w = tw + dot + 44 * u, h = 66 * u;
+    const x = g.align === 'left' ? g.badgeX : g.badgeX - w / 2, y = g.badgeY - h / 2;
+    ctx.fillStyle = hexA(L.badgeColor || L.ink, 0.15);
+    roundRect(ctx, x, y, w, h, h / 2);
+    ctx.fill();
+    ctx.strokeStyle = hexA(L.badgeColor || L.ink, 0.45);
+    ctx.lineWidth = Math.max(1, 1.5 * u);
+    ctx.stroke();
+    if (dot) {
+      const a = 0.55 + 0.45 * Math.cos((t * 2 * Math.PI) / 0.8);
+      ctx.fillStyle = `rgba(239,68,68,${a.toFixed(3)})`;
+      ctx.beginPath();
+      ctx.arc(x + 18 * u + 7 * u, g.badgeY, 7 * u, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = L.badgeColor || L.ink;
+    ctx.textAlign = 'left';
+    ctx.fillText(text, x + 18 * u + dot, g.badgeY + 1 * u, tw);
+    ctx.restore();
+  }
+
   function makeDraw(o, im) {
-    const g = geometry(o.W, o.H, (o.look || DEFAULT_LOOK).layout, o.style);
+    const g = geometry(o.W, o.H, (o.look || DEFAULT_LOOK).layout, o.style, { badge: !!o.badge, titleScale: (o.look || DEFAULT_LOOK).titleScale || 1 });
     const showArt = !g.noArt || o.style === 'circle';
     const an = makeAnalyzer(o);
     const nBands = o.W > o.H ? 56 : 40;
@@ -322,6 +491,15 @@
       still = makeCanvas(o.W, o.H);
       const c = still.getContext('2d', { alpha: false });
       drawBackground(c, o, g, im);
+      drawTexture(c, o);
+      if (o.bgMode === 'image' && im) {
+        // a soft dark band under the title so it stays readable on any photo
+        const z = g.zones.text, pad = 24 * g.u;
+        const sg = c.createLinearGradient(0, z[0] - pad * 2, 0, z[1] + pad * 2);
+        sg.addColorStop(0, 'rgba(0,0,0,0)'); sg.addColorStop(0.25, 'rgba(0,0,0,0.38)'); sg.addColorStop(0.75, 'rgba(0,0,0,0.38)'); sg.addColorStop(1, 'rgba(0,0,0,0)');
+        c.fillStyle = sg;
+        c.fillRect(g.align === 'left' ? g.tx - pad : 0, z[0] - pad * 2, g.align === 'left' ? g.tw + pad * 2 : o.W, z[1] - z[0] + pad * 4);
+      }
       if (im && showArt) drawArt(c, o, g, im, 0, o.style === 'circle' || !!g.noArt);
       drawText(c, o, g);
       return still;
@@ -336,6 +514,7 @@
       else if (o.style === 'wave') drawWave(ctx, o, g, wave);
       else if (o.style === 'overview') drawOverview(ctx, o, g, an.overview(o.W > o.H ? 80 : 60), endFrac(o, t));
       if (o.progress) drawProgress(ctx, o, g, t);
+      drawBadge(ctx, o, g, t);
     };
   }
 
@@ -398,7 +577,7 @@
   });
 
   const previewSoon = oncePerFrame(preview);
-  ['avTitle', 'avSub', 'avStyle', 'avColor1', 'avColor2', 'avBgMode', 'avBgColor', 'avSize', 'avFps', 'avStart', 'avDur', 'avProgress'].forEach((id) =>
+  ['avBadge', 'avTitle', 'avSub', 'avStyle', 'avColor1', 'avColor2', 'avBgMode', 'avBgColor', 'avSize', 'avFps', 'avStart', 'avDur', 'avProgress'].forEach((id) =>
     $(id).addEventListener('input', previewSoon)
   );
 
@@ -437,8 +616,27 @@
     },
   });
 
+  // did the user type the label themselves? (templates fill it with synthetic events)
+  let badgeTyped = false;
+  $('avBadge').addEventListener('input', (e) => { if (e.isTrusted) badgeTyped = $('avBadge').value.trim() !== ''; });
+
+  /* colour sets: change ONLY the colours (the template's layout, fonts, label stay) */
+  let palPicker = null;
+  palPicker = Palettes.mount({
+    box: $('avPalettes'),
+    onPick: (p) => {
+      const onImage = $('avBgMode').value === 'image'; // a blurred photo stays dark: keep light text there
+      const texture = p.light ? (look.texture || '').replace('vignette', '') : look.texture; // a vignette greys out light sets
+      look = { ...look, stops: p.bg, angle: 160, glow: !p.light, badgeColor: undefined, texture, ...(onImage ? {} : { ink: p.ink, dim: hexA(p.ink, 0.2) }) };
+      Templates.setControl('avColor1', p.c1);
+      Templates.setControl('avColor2', p.c2);
+      Templates.setControl('avBgColor', p.bg[0]);
+      preview();
+    },
+  });
+
   /* template picker */
-  const AV_CONTROLS = ['avStyle', 'avColor1', 'avColor2', 'avBgMode', 'avBgColor', 'avProgress', 'avSize', 'avFps', 'avSub'];
+  const AV_CONTROLS = ['avStyle', 'avColor1', 'avColor2', 'avBgMode', 'avBgColor', 'avProgress', 'avSize', 'avFps', 'avSub', 'avBadge'];
   const picker = Templates.mount({
     box: $('avTemplates'),
     key: 'av',
@@ -450,15 +648,26 @@
         ...cur, W, H, fps: 30, style: set.avStyle || cur.style, c1: set.avColor1 || cur.c1, c2: set.avColor2 || cur.c2,
         bgMode: keepImage ? 'image' : set.avBgMode === 'image' && !art ? 'gradient' : set.avBgMode || cur.bgMode,
         bgColor: set.avBgColor || cur.bgColor, progress: set.avProgress !== undefined ? !!set.avProgress : cur.progress,
-        look: { ...DEFAULT_LOOK, ...t.style },
+        look: readableLook({ ...DEFAULT_LOOK, ...t.style }, keepImage ? 'image' : 'gradient'),
+        badge: set.avBadge !== undefined ? set.avBadge : '',
+        sub: cur.sub, // like the video: the genre hint is only a placeholder
       };
       makeDraw(o, art)(ctx, audio ? Math.min(o.duration * 0.3, 20) : 0.5);
     },
-    apply: (t) => { look = { ...DEFAULT_LOOK, ...t.style }; ensureFonts().then(preview); preview(); },
+    apply: (t) => {
+      look = { ...DEFAULT_LOOK, ...t.style };
+      if (palPicker) palPicker.clear(); // the template brings its own colours
+      // templates saved before the label existed have no avBadge: don't leave the previous template's label
+      if ((!t.set || !('avBadge' in t.set)) && !badgeTyped) Templates.setControl('avBadge', '');
+      // the genre's suggested subtitle is a hint (placeholder, drawn faintly) — it never overwrites what the user typed
+      $('avSub').placeholder = look.subHint ? 'VD: ' + look.subHint : '@yourname';
+      ensureFonts().then(preview);
+      preview();
+    },
     controls: AV_CONTROLS,
     captureStyle: () => ({ ...look }),
-    // a chosen cover keeps its "image" background when switching templates
-    skipControl: (id) => id === 'avBgMode' && art && $('avBgMode').value === 'image',
+    // a chosen cover keeps its "image" background; a label the user typed is kept too
+    skipControl: (id) => (id === 'avBgMode' && art && $('avBgMode').value === 'image') || (id === 'avBadge' && badgeTyped && $('avBadge').value.trim() !== ''),
   });
 
   window.addEventListener('tabshown', (e) => e.detail === 'audiovideo' && preview());

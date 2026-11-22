@@ -374,6 +374,50 @@
     return { s: ns, e: ns + len };
   }
 
+  /* ---------------- colour sets (for non-designers) ---------------- */
+  /** WCAG contrast ratio between two #rrggbb colours (1…21). */
+  const contrast = (a, b) => { const x = luminance(a), y = luminance(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+  /**
+   * Named, harmonious colour sets: c1 / c2 = visualizer colours, bg = background (gradient stops; the first is
+   * used as the solid colour), ink = text. Every set is checked by a unit test: ink vs background ≥ 4.5:1,
+   * c1 ≥ 3:1, c2 ≥ 2:1 — so whatever a non-designer picks stays readable.
+   */
+  const P = (id, name, mood, c1, c2, bg, ink) => ({ id, name, mood, c1, c2, bg, ink, light: luminance(bg[0]) > 0.4 });
+  const PALETTES = [
+    // dark & elegant
+    P('dem-saigon', 'Đêm Sài Gòn', 'Tối', '#ff4d8d', '#ffb84d', ['#1a1033', '#0b0618'], '#fff7fb'),
+    P('neon', 'Neon', 'Tối', '#25f4ee', '#fe2c55', ['#0f0f14', '#050507'], '#ffffff'),
+    P('cuc-quang', 'Cực quang', 'Tối', '#5eead4', '#a78bfa', ['#0b1d2e', '#061018'], '#f0fdfa'),
+    P('ruou-vang', 'Rượu vang', 'Tối', '#f9a8b8', '#e9c46a', ['#3b0a1a', '#16040a'], '#fff1f2'),
+    P('rung-thong', 'Rừng thông', 'Tối', '#86efac', '#facc15', ['#0f2a1d', '#07150e'], '#f0fdf4'),
+    P('dai-duong', 'Đại dương sâu', 'Tối', '#7dd3fc', '#fde68a', ['#0c2d48', '#051726'], '#f0f9ff'),
+    P('ca-phe', 'Cà phê', 'Tối', '#e7c9a9', '#c08552', ['#3b2618', '#1e130c'], '#fbf3ea'),
+    P('hoang-kim', 'Hoàng kim', 'Tối', '#fcd34d', '#f59e0b', ['#1c1917', '#0c0a09'], '#fef3c7'),
+    P('mong-mo', 'Tím mộng mơ', 'Tối', '#f0abfc', '#c4b5fd', ['#2e1065', '#4c1d95'], '#faf5ff'),
+    P('dem-trang', 'Đêm trăng', 'Tối', '#e5e7eb', '#93c5fd', ['#111827', '#030712'], '#f9fafb'),
+    P('do-den', 'Đỏ đen', 'Tối', '#ef4444', '#fca5a5', ['#140404', '#000000'], '#fafafa'),
+    // light & soft
+    P('tra-sua', 'Trà sữa', 'Sáng & Pastel', '#8b5e3c', '#9a6a3f', ['#f5e6d3', '#e8d2b8'], '#3e2a1c'),
+    P('bac-ha', 'Bạc hà', 'Sáng & Pastel', '#0f766e', '#0d9488', ['#e6f7f1', '#cdeee2'], '#134e4a'),
+    P('hong-dao', 'Hồng đào', 'Sáng & Pastel', '#be123c', '#e11d48', ['#ffe4e6', '#fecdd3'], '#4c0519'),
+    P('oai-huong', 'Oải hương', 'Sáng & Pastel', '#6d28d9', '#8b5cf6', ['#ede9fe', '#ddd6fe'], '#2e1065'),
+    P('bau-troi', 'Bầu trời', 'Sáng & Pastel', '#0369a1', '#0284c7', ['#e0f2fe', '#bae6fd'], '#082f49'),
+    P('chanh-vang', 'Chanh vàng', 'Sáng & Pastel', '#a16207', '#4d7c0f', ['#fef9c3', '#fde68a'], '#422006'),
+    P('giay-cu', 'Giấy cũ', 'Sáng & Pastel', '#7c5a3a', '#8a6440', ['#f3ead8', '#e7dcc4'], '#3b2f2f'),
+    P('trang-den', 'Trắng đen', 'Sáng & Pastel', '#111111', '#6b7280', ['#fafafa', '#ececec'], '#111111'),
+    // vivid
+    P('cam-chay', 'Cam cháy', 'Rực rỡ', '#fff7ed', '#fde68a', ['#c2410c', '#7c2d12'], '#ffffff'),
+    P('xanh-ngoc', 'Xanh ngọc', 'Rực rỡ', '#ccfbf1', '#fde68a', ['#0f766e', '#134e4a'], '#ffffff'),
+    P('xanh-duong', 'Xanh dương', 'Rực rỡ', '#bfdbfe', '#fde047', ['#1d4ed8', '#1e3a8a'], '#ffffff'),
+    P('hong-neon', 'Hồng rực', 'Rực rỡ', '#fbcfe8', '#67e8f9', ['#9d174d', '#500724'], '#ffffff'),
+    P('hoang-hon', 'Hoàng hôn', 'Rực rỡ', '#fde047', '#fb7185', ['#7c2d12', '#3b0764'], '#fff7ed'),
+    // seasonal
+    P('tet', 'Tết', 'Lễ hội', '#fcd34d', '#fef3c7', ['#991b1b', '#450a0a'], '#fffbeb'),
+    P('giang-sinh', 'Giáng sinh', 'Lễ hội', '#fde68a', '#f87171', ['#14532d', '#052e16'], '#f0fdf4'),
+    P('trung-thu', 'Trung thu', 'Lễ hội', '#fbbf24', '#fb923c', ['#1e1b4b', '#0f0a2e'], '#fef3c7'),
+    P('valentine', 'Valentine', 'Lễ hội', '#fecdd3', '#fb7185', ['#881337', '#4c0519'], '#fff1f2'),
+  ];
+
   /* ---------------- silence detection / removal ---------------- */
   /**
    * Find silent stretches (start, end, long pauses) in decoded audio.
@@ -457,13 +501,17 @@
    * Zones are STACKED (never overlap): each layout lists its zones top→bottom and the art gets what is left.
    * layout: 'cover' (art, text, visualizer) | 'top' (text first: podcast) | 'minimal' (no art, big visualizer).
    * style 'circle' draws rays around the art: its full drawn size is reserved (1.44·A + 44u).
-   * Returns drawing fields + `zones` {art,text,vis,prog: [top, bottom]} used by the tests.
+   * badge: reserve a band at the top for a small label ("SÁCH NÓI", "● ON AIR").
+   * 9:16 (TikTok / Reels / Shorts): everything sits between 6 % and 78 % of the height — the app's own
+   * caption, buttons and progress cover the bottom ~22 % (safe-zone guides: Revid, Ignite, aiCarousels).
+   * Returns drawing fields + `zones` {badge?,art,text,vis,prog: [top, bottom]} used by the tests.
    */
-  function avGeometry(W, H, layout = 'cover', style = 'bars') {
-    const u = Math.min(W, H) / 1080, fs = 64 * u;
+  function avGeometry(W, H, layout = 'cover', style = 'bars', { badge = false, titleScale = 1 } = {}) {
+    const u = Math.min(W, H) / 1080, fs = 64 * u * titleScale;
     const TEXT_TOP = 0.95 * fs; // accents above the first baseline
-    const TEXT_H = 252 * u; // 2 title lines + subtitle (drawText)
-    const PROG_H = 72 * u; // knob (12u above the bar) + bar + time labels
+    const TEXT_H = 252 * u * titleScale; // 2 title lines + subtitle (drawText); script fonts are drawn larger
+    const PROG_H = 76 * u; // knob (12u above the bar) + bar + time labels (34u)
+    const BADGE_H = 72 * u;
     const rays = style === 'circle';
     const ring = (A) => (rays ? A * 1.44 + 44 * u : A);
     const fromRing = (R) => Math.max(40 * u, rays ? (R - 44 * u) / 1.44 : R);
@@ -476,31 +524,40 @@
       const pad = (ring(A) - A) / 2;
       const ax = Math.round(W * 0.06 + pad), ay = Math.round((H - A) / 2);
       const tx = Math.round(ax + A + pad + W * 0.05), tw = Math.round(W - tx - W * 0.06);
-      const gap = H * 0.05, vh = H * 0.22;
-      const top = (H - (TEXT_H + gap + vh + gap + PROG_H)) / 2;
+      const gap = H * 0.05, vh = H * 0.22, bh = badge ? BADGE_H + gap * 0.6 : 0;
+      const top0 = (H - (bh + TEXT_H + gap + vh + gap + PROG_H)) / 2, top = top0 + bh;
       const titleY = top + TEXT_TOP, vy = top + TEXT_H + gap, py = vy + vh + gap;
+      const zones = { art: z(ay - pad, ay + A + pad), text: z(top, top + TEXT_H), vis: z(vy, vy + vh), prog: z(py - 12 * u, py + PROG_H), artX: z(ax - pad, ax + A + pad), colX: z(tx, tx + tw) };
+      if (badge) zones.badge = z(top0, top0 + BADGE_H);
       return {
         u, A, ax, ay, tx, tw, align: 'left', titleY, vx: tx, vw: tw, vy, vh, py,
-        zones: { art: z(ay - pad, ay + A + pad), text: z(top, top + TEXT_H), vis: z(vy, vy + vh), prog: z(py - 12 * u, py + PROG_H), artX: z(ax - pad, ax + A + pad), colX: z(tx, tx + tw) },
+        badgeY: badge ? top0 + BADGE_H / 2 : null, badgeX: tx,
+        zones,
       };
     }
 
     const gap = H * 0.035, margin = H * 0.06;
     const minimal = layout === 'minimal';
+    const tall = H > W * 1.6; // 9:16
+    // 9:16: TikTok's top bar covers ~6–10 %, so a label starts at 10 %; its right-hand icons cover x > 86 %
+    const regionTop = tall ? H * (badge ? 0.1 : 0.06) : margin * 0.5, regionBottom = tall ? H * 0.78 : H - margin * 0.5;
+    const side = tall ? 0.14 : 0.08; // symmetric inset keeps the centred design and clears the icon column
+    const extra = badge ? BADGE_H + gap : 0;
     const vh = minimal ? H * (land ? 0.3 : 0.24) : H * (H > W * 1.3 ? 0.12 : 0.14);
     let A, order;
     if (minimal) {
       A = Math.round(fromRing(vh)); // only drawn for the circle style, inside the visualizer zone
       order = ['vis', 'text', 'prog'];
     } else {
-      const avail = H - (TEXT_H + vh + PROG_H + 3 * gap + 2 * margin);
+      const avail = tall ? regionBottom - regionTop - (TEXT_H + vh + PROG_H + 3 * gap) - extra : H - (TEXT_H + vh + PROG_H + 3 * gap + 2 * margin) - extra;
       const cap = layout === 'top' ? Math.min(W * 0.5, H * 0.28) : Math.min(W * 0.64, H * 0.33);
       A = Math.round(Math.min(cap, fromRing(Math.min(avail, W * 0.84))));
       order = layout === 'top' ? ['text', 'art', 'vis', 'prog'] : ['art', 'text', 'vis', 'prog'];
     }
-    const size = { art: ring(A), text: TEXT_H, vis: vh, prog: PROG_H };
+    if (badge) order.unshift('badge');
+    const size = { badge: BADGE_H, art: ring(A), text: TEXT_H, vis: vh, prog: PROG_H };
     const total = order.reduce((s, k) => s + size[k], 0) + gap * (order.length - 1);
-    let y = Math.max(margin * 0.5, (H - total) * 0.45);
+    let y = tall ? regionTop + Math.max(0, (regionBottom - regionTop - total) * 0.45) : Math.max(margin * 0.5, (H - total) * 0.45);
     const zones = {};
     for (const k of order) { zones[k] = z(y, y + size[k]); y += size[k] + gap; }
     const vy = zones.vis[0];
@@ -510,8 +567,9 @@
     const ax = Math.round((W - A) / 2);
     zones.artX = z(ax - pad, ax + A + pad);
     return {
-      u, A, ax, ay, noArt: minimal, tx: W * 0.08, tw: W * 0.84, align: 'center',
-      titleY: zones.text[0] + TEXT_TOP, vx: Math.round(W * 0.08), vw: Math.round(W * 0.84), vy, vh, py: zones.prog[0] + 12 * u,
+      u, A, ax, ay, noArt: minimal, tx: W * side, tw: W * (1 - 2 * side), align: 'center',
+      titleY: zones.text[0] + TEXT_TOP, vx: Math.round(W * side), vw: Math.round(W * (1 - 2 * side)), vy, vh, py: zones.prog[0] + 12 * u,
+      badgeY: badge ? (zones.badge[0] + zones.badge[1]) / 2 : null, badgeX: W / 2,
       zones,
     };
   }
@@ -596,7 +654,7 @@
     isHeic, isHeicBrand, looksLikeAudio, AUDIO_EXT, fitArea,
     exifOrientation, orientationApp1, stripJpegBytes,
     graphemes, splitLongWord, wrap, clampLines, splitSlides,
-    luminance, colorsFor, slideTiming, clipDuration, checkStart,
+    luminance, contrast, PALETTES, colorsFor, slideTiming, clipDuration, checkStart,
     bitrateFor, estimateBytes, AUDIO_BPS, H264_CODECS, even,
     fft, monoWindow, bandEdges, spectrumBands, peaks, smoothBars, rms,
   };
