@@ -6,7 +6,11 @@
   const player = new VideoEngine.Player(canvas);
   let rw = null; // export button (estimate line)
   const thumbCache = new Map(); // template thumbnails + empty preview (sample photo)
-  const trim = AudioTrim.mount({ box: $('ivTrim'), startId: 'ivStart', durId: 'ivDur' });
+  let audioLabel = '';
+  const trim = AudioTrim.mount({
+    box: $('ivTrim'), startId: 'ivStart', durId: 'ivDur',
+    onAudio: (b) => { audio = b; $('ivAudioInfo').textContent = `🎵 ${audioLabel} — ${formatTime(b.duration)}`; preview(); },
+  });
 
   /* ---------------- templates ---------------- */
   /** Look = what a template sets that has no control: title font/colour/position and cinema bars. */
@@ -282,6 +286,7 @@
     try {
       audio = await decodeAudioFile(f);
       audioName = baseName(f.name);
+      audioLabel = f.name;
       $('ivAudioInfo').textContent = `🎵 ${f.name} — ${formatTime(audio.duration)}`;
       trim.setAudio(audio);
       preview();

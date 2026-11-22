@@ -374,6 +374,83 @@
     return { s: ns, e: ns + len };
   }
 
+  /* ---------------- silence detection / removal ---------------- */
+  /**
+   * Find silent stretches (start, end, long pauses) in decoded audio.
+   * channels: Float32Array[]; sr: sample rate. minGap = shortest pause in the MIDDLE worth reporting (s);
+   * edges (lead / tail) are reported from minEdge. The threshold adapts to the recording: 32 dB under its
+   * loud level (90th percentile of 20 ms windows), clamped to −58…−34 dBFS, so quiet voice notes and loud
+   * songs both work. → [{ start, end, kind: 'lead' | 'gap' | 'tail' }] in seconds.
+   */
+  function findSilences(channels, sr, { minGap = 0.8, minEdge = 0.2, win = 0.02 } = {}) {
+    const n = channels[0].length, w = Math.max(1, Math.round(win * sr)), nw = Math.floor(n / w);
+    if (nw < 2) return [];
+    const db = new Float32Array(nw);
+    for (let k = 0; k < nw; k++) {
+      let e = 0;
+      for (const ch of channels) for (let i = k * w, end = i + w; i < end; i++) e += ch[i] * ch[i];
+      const r = Math.sqrt(e / (w * channels.length));
+      db[k] = r > 1e-9 ? 20 * Math.log10(r) : -120;
+    }
+    const sorted = Float32Array.from(db).sort();
+    const loud = sorted[Math.floor(sorted.length * 0.9)];
+    const thr = Math.min(-34, Math.max(-58, loud - 32));
+    const out = [];
+    let k = 0;
+    while (k < nw) {
+      if (db[k] >= thr) { k++; continue; }
+      const a = k;
+      while (k < nw && db[k] < thr) k++;
+      const start = (a * w) / sr, end = k >= nw ? n / sr : (k * w) / sr;
+      const kind = a === 0 ? 'lead' : k >= nw ? 'tail' : 'gap';
+      if (kind === 'lead' && k >= nw) continue; // the whole file is silent: nothing sensible to cut
+      // measured in 20 ms windows, a pause comes out up to ~2 windows short: allow for it so "≥ 0,4 s" finds a 0.4 s pause
+      if (end - start >= (kind === 'gap' ? minGap : minEdge) - 1.5 * win) out.push({ start, end, kind });
+    }
+    return out;
+  }
+
+  /**
+   * What will actually be cut for each silence: a short pause is KEPT around speech so it still sounds
+   * natural (pad, at the start/end only `edgePad`). → [{ from, to }] in seconds, sorted, non-empty.
+   */
+  function silenceCuts(segments, { pad = 0.15, edgePad = 0.08 } = {}) {
+    return segments
+      .map((g) => ({ from: g.kind === 'lead' ? g.start : g.start + (g.kind === 'tail' ? edgePad : pad), to: g.kind === 'tail' ? g.end : g.end - (g.kind === 'lead' ? edgePad : pad) }))
+      .filter((c) => c.to - c.from > 0.02)
+      .sort((x, y) => x.from - y.from);
+  }
+
+  /**
+   * Remove [from, to) ranges (seconds) from every channel; a short fade (ms) on each side of every join
+   * avoids clicks. → Float32Array[] (new arrays; the input is untouched).
+   */
+  function removeRanges(channels, sr, cuts, fadeMs = 8) {
+    const n = channels[0].length;
+    const keep = [];
+    let pos = 0;
+    for (const c of cuts) {
+      const a = Math.max(pos, Math.round(c.from * sr)), b = Math.min(n, Math.round(c.to * sr));
+      if (a > pos) keep.push([pos, a]);
+      pos = Math.max(pos, b);
+    }
+    if (pos < n) keep.push([pos, n]);
+    const total = keep.reduce((s, [a, b]) => s + (b - a), 0);
+    const f = Math.max(1, Math.round((fadeMs / 1000) * sr));
+    return channels.map((ch) => {
+      const out = new Float32Array(Math.max(1, total));
+      let o = 0;
+      keep.forEach(([a, b], i) => {
+        out.set(ch.subarray(a, b), o);
+        const len = b - a, fi = Math.min(f, Math.floor(len / 2));
+        if (i > 0) for (let j = 0; j < fi; j++) out[o + j] *= j / fi; // fade in after a join
+        if (i < keep.length - 1) for (let j = 0; j < fi; j++) out[o + len - 1 - j] *= j / fi; // fade out before a join
+        o += len;
+      });
+      return out;
+    });
+  }
+
   /* ---------------- Audio → Video layout ---------------- */
   /**
    * Where the cover art, title block, visualizer and time bar go, for any frame size (9:16, 4:5, 1:1, 16:9).
@@ -514,7 +591,7 @@
   }
 
   return {
-    audioFade, fadeGain, exportEstimate, friendlyError, FILTERS, applyFilter, avGeometry, trimDrag,
+    audioFade, fadeGain, exportEstimate, friendlyError, FILTERS, applyFilter, avGeometry, trimDrag, findSilences, silenceCuts, removeRanges,
     formatBytes, formatTime, baseName, detectPlatform,
     isHeic, isHeicBrand, looksLikeAudio, AUDIO_EXT, fitArea,
     exifOrientation, orientationApp1, stripJpegBytes,

@@ -7,7 +7,15 @@
   const canvas = $('avCanvas');
   const player = new VideoEngine.Player(canvas);
   let rw = null; // export button (estimate line)
-  const trim = AudioTrim.mount({ box: $('avTrim'), startId: 'avStart', durId: 'avDur' });
+  const trim = AudioTrim.mount({
+    box: $('avTrim'), startId: 'avStart', durId: 'avDur',
+    onAudio: (b) => {
+      audio = b;
+      channels = Array.from({ length: b.numberOfChannels }, (_, i) => b.getChannelData(i));
+      $('avAudioInfo').textContent = `🎵 ${audioFile} — ${formatTime(b.duration)} · ${b.sampleRate} Hz · ${b.numberOfChannels} kênh`;
+      preview();
+    },
+  });
   const FFT = 2048;
 
   /* ---------------- templates ---------------- */

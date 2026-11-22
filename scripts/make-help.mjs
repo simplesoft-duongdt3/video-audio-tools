@@ -35,6 +35,27 @@ function demoSong(seconds = 20, sr = 22050) {
   return { name: 'nhac-cua-toi.wav', mimeType: 'audio/wav', buffer: buf };
 }
 
+/** A voice note with silence at the start, a long pause and silence at the end (for the silence-removal step). */
+function voiceNote(sr = 22050) {
+  const parts = [[1.5, 0], [4, 1], [2.5, 0], [5, 1], [0.4, 0], [3, 1], [1.2, 0]];
+  const n = parts.reduce((t, [d]) => t + Math.round(d * sr), 0), buf = Buffer.alloc(44 + n * 2);
+  buf.write('RIFF', 0); buf.writeUInt32LE(36 + n * 2, 4); buf.write('WAVEfmt ', 8);
+  buf.writeUInt32LE(16, 16); buf.writeUInt16LE(1, 20); buf.writeUInt16LE(1, 22);
+  buf.writeUInt32LE(sr, 24); buf.writeUInt32LE(sr * 2, 28); buf.writeUInt16LE(2, 32); buf.writeUInt16LE(16, 34);
+  buf.write('data', 36); buf.writeUInt32LE(n * 2, 40);
+  let o = 0;
+  for (const [d, on] of parts) {
+    const m = Math.round(d * sr);
+    for (let i = 0; i < m; i++) {
+      const t = i / sr, syll = 0.5 + 0.5 * Math.sin(t * 2 * Math.PI * 3.3); // speech-like loudness
+      const v = on ? syll * (Math.sin(2 * Math.PI * 180 * t) * 0.6 + Math.sin(2 * Math.PI * 360 * t) * 0.3) : 0;
+      buf.writeInt16LE(Math.round(v * 20000), 44 + (o + i) * 2);
+    }
+    o += m;
+  }
+  return { name: 'ghi-am.wav', mimeType: 'audio/wav', buffer: buf };
+}
+
 /** Pleasant demo photos drawn in the page (sunset, sea, mountains) → File objects in an <input type=file>. */
 async function demoPhotos(page, inputId) {
   await page.evaluate(async (inputId) => {
@@ -183,6 +204,16 @@ async function main() {
   await shot('av-template', [['#avTemplates .templates', 1], ['#avTitle', 2], ['#avSub', 3]]);
   await scrollTo('#avStyle');
   await shot('av-style', [['#avStyle', 1], ['.drop[data-input=avImg]', 2], ['#avTrim .trim-wave', 3]]);
+
+  // --- remove silences (voice recording with pauses) ---
+  await page.setInputFiles('#avAudio', voiceNote());
+  await page.waitForSelector('#avTrim:not([hidden])');
+  await page.click('#avTrim [data-a=scan]');
+  await page.waitForSelector('#avTrim .sil-res:not([hidden])');
+  await scrollTo('#avTrim .trim-wave');
+  await shot('silence', [['#avTrim .trim-wave', 1], ['#avTrim .sil-list', 2], ['#avTrim [data-a=cut]', 3]]);
+  await page.setInputFiles('#avAudio', song);
+  await page.waitForTimeout(300);
 
   // --- my templates ---
   page.once('dialog', (d) => d.accept('Kênh của tôi'));
@@ -356,6 +387,14 @@ function page_(s) {
     <li>Chọn <b>đoạn nhạc</b> <span class="n">3</span> — bài dài trên 5 phút nên chọn đoạn ngắn để iPhone không bị thiếu bộ nhớ.</li>
   </ol>
   ${fig(s['av-style'], 'Kiểu sóng nhạc (1), ảnh bìa (2), đoạn nhạc (3)')}
+  <h3>Bỏ đoạn im lặng thừa (ghi âm, podcast, bài giảng)</h3>
+  <ol>
+    <li>Dưới sóng nhạc, bấm <b>✂️ Tìm đoạn im lặng thừa</b>. Các đoạn im lặng ở <b>đầu bài</b>, <b>cuối bài</b> và các <b>khoảng lặng dài</b> được tô đỏ trên sóng nhạc <span class="n">1</span>.</li>
+    <li>Bỏ chọn đoạn nào bạn muốn giữ <span class="n">2</span>. Đổi <b>Độ nhạy</b> nếu muốn bỏ cả những khoảng lặng ngắn.</li>
+    <li>Bấm <b>Bỏ … đoạn đã chọn</b> <span class="n">3</span> — hoặc <b>Không bỏ</b>. Trang giữ lại một nhịp ngắn quanh lời nói để nghe vẫn tự nhiên. Đổi ý thì bấm <b>↩︎ Hoàn tác</b>.</li>
+  </ol>
+  ${fig(s.silence, 'Đoạn im lặng tô đỏ (1), danh sách để chọn (2), nút bỏ (3)')}
+  <div class="tip">💡 Không có gì bị cắt nếu bạn không bấm nút bỏ. Bài hát liền mạch thường không có đoạn im lặng nào — trang sẽ báo “Không thấy”.</div>
 </section>
 
 <section id="luu">

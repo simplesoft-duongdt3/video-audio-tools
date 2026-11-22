@@ -375,3 +375,47 @@ test('trimDrag: handles keep ≥ min apart and inside the song; moving keeps the
   const tiny = C.trimDrag({ s: 0, e: 0.3, d: 0.3, mode: 'end', t: 0 });
   assert.ok(tiny.e >= tiny.s);
 });
+
+/** tone/silence pattern: [[seconds, amplitude], …] → Float32Array at sr */
+function pattern(parts, sr = 8000) {
+  const n = parts.reduce((s, [d]) => s + Math.round(d * sr), 0), x = new Float32Array(n);
+  let o = 0;
+  for (const [d, a] of parts) { const m = Math.round(d * sr); for (let i = 0; i < m; i++) x[o + i] = a * Math.sin((2 * Math.PI * 220 * i) / sr); o += m; }
+  return x;
+}
+
+test('findSilences: lead, long pause, tail found; short breaths and the music itself are not', () => {
+  const sr = 8000;
+  const x = pattern([[1, 0], [2, 0.5], [0.3, 0], [1, 0.5], [1.5, 0.0005], [2, 0.4], [0.5, 0]], sr);
+  const s = C.findSilences([x], sr);
+  assert.deepEqual(s.map((g) => g.kind), ['lead', 'gap', 'tail']);
+  const near = (a, b) => Math.abs(a - b) < 0.05;
+  assert.ok(near(s[0].start, 0) && near(s[0].end, 1), JSON.stringify(s[0]));
+  assert.ok(near(s[1].start, 4.3) && near(s[1].end, 5.8), 'the 1.5 s near-silent pause (−66 dB) ' + JSON.stringify(s[1]));
+  assert.ok(near(s[2].start, 7.8) && near(s[2].end, 8.3), JSON.stringify(s[2]));
+  // the 0.3 s breath is kept at the default sensitivity, found with minGap 0.25
+  assert.equal(C.findSilences([x], sr, { minGap: 0.25 }).filter((g) => g.kind === 'gap').length, 2);
+  assert.equal(C.findSilences([x], sr, { minGap: 0.3 }).filter((g) => g.kind === 'gap').length, 2, 'a 0.3 s pause counts at "≥ 0.3 s"');
+  // continuous music: nothing; all-silent file: nothing
+  assert.deepEqual(C.findSilences([pattern([[5, 0.3]], sr)], sr), []);
+  assert.deepEqual(C.findSilences([new Float32Array(sr * 3)], sr), []);
+  // a quiet voice note (peaks −30 dBFS) still has its pause found: threshold adapts
+  const quiet = pattern([[2, 0.03], [1.2, 0], [2, 0.03]], sr);
+  assert.equal(C.findSilences([quiet], sr).length, 1);
+});
+
+test('silenceCuts keeps a natural pause around speech; removeRanges shortens without clicks', () => {
+  const cuts = C.silenceCuts([{ start: 0, end: 1, kind: 'lead' }, { start: 4.3, end: 5.8, kind: 'gap' }, { start: 7.8, end: 8.3, kind: 'tail' }]);
+  assert.deepEqual(cuts.map((c) => [+c.from.toFixed(2), +c.to.toFixed(2)]), [[0, 0.92], [4.45, 5.65], [7.88, 8.3]]);
+  const sr = 8000, x = pattern([[1, 0.5], [1, 0], [1, 0.5]], sr);
+  const [y] = C.removeRanges([x], sr, [{ from: 1.15, to: 1.85 }]);
+  assert.equal(y.length, x.length - Math.round(0.7 * sr));
+  // around the join the signal is faded to ~0: no jump bigger than a normal sine step
+  const j = Math.round(1.15 * sr);
+  let maxJump = 0;
+  for (let i = j - 50; i < j + 50; i++) maxJump = Math.max(maxJump, Math.abs(y[i + 1] - y[i]));
+  assert.ok(maxJump < 0.1, `jump ${maxJump}`);
+  assert.equal(x[0], C.removeRanges([x], sr, [])[0][0], 'no cuts = same samples');
+  // overlapping / out-of-range cuts are tolerated
+  assert.equal(C.removeRanges([x], sr, [{ from: -1, to: 0.5 }, { from: 0.4, to: 0.6 }, { from: 2.9, to: 9 }])[0].length, Math.round(2.3 * sr));
+});

@@ -253,3 +253,13 @@ details.ios-only > summary { cursor: pointer; font-weight: 600; min-height: 44px
   .split { grid-template-columns: minmax(0, 1fr) minmax(320px, 480px); }
   .preview canvas { max-height: 80vh; }
 }
+
+/* silence removal (inside the trimmer) */
+.sil { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 10px; }
+.sil [data-a=scan] { width: 100%; }
+.sil-sum { margin: 0 0 8px; font-size: 0.9rem; }
+.sil-sens { display: block; margin-bottom: 6px; }
+.sil-list { list-style: none; padding: 0; margin: 4px 0 8px; }
+.sil-list li { border-bottom: 1px solid var(--line); }
+.sil-list label.check { margin: 0; }
+.sil-done { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; font-size: 0.9rem; }

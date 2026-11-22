@@ -6,7 +6,11 @@
 const AudioTrim = (() => {
   const round1 = (v) => Math.round(v * 10) / 10;
 
-  function mount({ box, startId, durId }) {
+  /**
+   * onAudio(buffer): called when the user removes silences (new, shorter buffer) or undoes it (the original),
+   * so the tab exports exactly what the user chose.
+   */
+  function mount({ box, startId, durId, onAudio = () => {} }) {
     const startEl = $(startId), durEl = $(durId);
     box.classList.add('trim');
     box.innerHTML = `
@@ -22,13 +26,37 @@ const AudioTrim = (() => {
         <button type="button" data-a="play">▶ Nghe đoạn này</button>
         <button type="button" data-a="all">Cả bài</button>
       </div>
-      <p class="hint">Kéo 2 tay cầm để chọn đoạn, hoặc chạm vào sóng nhạc để dời đoạn tới đó.</p>`;
+      <p class="hint">Kéo 2 tay cầm để chọn đoạn, hoặc chạm vào sóng nhạc để dời đoạn tới đó.</p>
+      <div class="sil">
+        <button type="button" data-a="scan">✂️ Tìm đoạn im lặng thừa</button>
+        <div class="sil-res" hidden>
+          <p class="sil-sum" aria-live="polite"></p>
+          <label class="sil-sens">Độ nhạy
+            <select data-a="sens">
+              <option value="1.5">Chỉ khoảng lặng dài (≥ 1,5 giây)</option>
+              <option value="0.8" selected>Vừa (≥ 0,8 giây)</option>
+              <option value="0.4">Cả khoảng lặng ngắn (≥ 0,4 giây)</option>
+            </select>
+          </label>
+          <ul class="sil-list"></ul>
+          <div class="row tight"><button type="button" class="primary" data-a="cut"></button><button type="button" data-a="close">Không bỏ</button></div>
+          <p class="hint">Giữ lại một nhịp ngắn quanh lời nói để nghe vẫn tự nhiên. Có thể hoàn tác.</p>
+        </div>
+        <div class="sil-done" hidden><span></span><button type="button" data-a="undo">↩︎ Hoàn tác</button></div>
+      </div>`;
     const wave = box.querySelector('.trim-wave'), cv = box.querySelector('canvas');
     const selEl = box.querySelector('.trim-sel'), playEl = box.querySelector('.trim-play');
     const times = box.querySelector('.trim-times');
     const hs = { start: box.querySelector('[data-h=start]'), end: box.querySelector('[data-h=end]') };
     const playBtn = box.querySelector('[data-a=play]');
     let audio = null, channels = null, pk = null, pkN = 0, src = null, raf = 0;
+    let original = null; // the decoded song as chosen; `audio` may be it with silences removed
+    let found = []; // silences found in `original` (shown while choosing)
+    const sil = {
+      scan: box.querySelector('[data-a=scan]'), res: box.querySelector('.sil-res'), sum: box.querySelector('.sil-sum'),
+      sens: box.querySelector('[data-a=sens]'), list: box.querySelector('.sil-list'), cut: box.querySelector('[data-a=cut]'),
+      done: box.querySelector('.sil-done'),
+    };
 
     /** Current selection from the inputs. */
     function sel() {
@@ -50,6 +78,11 @@ const AudioTrim = (() => {
       const ctx = cv.getContext('2d');
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, w, h);
+      // silences being chosen: red bands where the cut will be
+      if (!sil.res.hidden) {
+        ctx.fillStyle = 'rgba(254,44,85,0.28)';
+        for (const c of chosenCuts()) ctx.fillRect((c.from / d) * w, 0, Math.max(1, ((c.to - c.from) / d) * w), h);
+      }
       const step = w / n, bw = Math.max(1, step * 0.6);
       for (let i = 0; i < n; i++) {
         const t = ((i + 0.5) / n) * d;
@@ -161,6 +194,78 @@ const AudioTrim = (() => {
     };
     box.querySelector('[data-a=all]').onclick = () => { if (!audio) return; stop(); durEl.value = ''; apply(0, audio.duration); };
 
+    // ---- silences: find → user chooses → cut (or not) → undo ----
+    const KIND = { lead: 'Đầu bài', gap: 'Khoảng lặng', tail: 'Cuối bài' };
+    const sec = (v) => (Math.round(v * 10) / 10).toString().replace('.', ',') + ' giây';
+    const chosenCuts = () => Core.silenceCuts(found.filter((_, i) => { const cb = sil.list.querySelector(`[data-i="${i}"]`); return cb && cb.checked; }));
+    function updateCut() {
+      const cuts = chosenCuts();
+      const total = cuts.reduce((t, c) => t + c.to - c.from, 0);
+      sil.cut.textContent = cuts.length ? `Bỏ ${cuts.length} đoạn đã chọn (−${sec(total)})` : 'Chọn ít nhất 1 đoạn';
+      sil.cut.disabled = !cuts.length;
+      draw();
+    }
+    function scan() {
+      if (!original) return;
+      const chs = Array.from({ length: original.numberOfChannels }, (_, i) => original.getChannelData(i));
+      found = Core.findSilences(chs, original.sampleRate, { minGap: +sil.sens.value });
+      sil.list.innerHTML = '';
+      found.forEach((g, i) => {
+        const li = document.createElement('li');
+        li.innerHTML = '<label class="check"><input type="checkbox" checked><span></span></label>';
+        const cb = li.querySelector('input');
+        cb.dataset.i = i;
+        cb.onchange = updateCut;
+        li.querySelector('span').textContent = `${KIND[g.kind]} · ${g.kind === 'gap' ? 'lúc ' + formatTime(g.start) + ' · ' : ''}${sec(g.end - g.start)}`;
+        sil.list.appendChild(li);
+      });
+      const total = found.reduce((t, g) => t + g.end - g.start, 0);
+      sil.sum.textContent = found.length ? `Tìm thấy ${found.length} đoạn im lặng (tổng ${sec(total)}). Bỏ chọn đoạn nào bạn muốn giữ:` : '✓ Không thấy đoạn im lặng nào đáng bỏ ở độ nhạy này.';
+      sil.cut.parentElement.hidden = !found.length;
+      sil.res.hidden = false;
+      sil.scan.hidden = true;
+      updateCut();
+    }
+    function setCurrent(buf, keepToEnd) {
+      stop();
+      audio = buf;
+      channels = Array.from({ length: buf.numberOfChannels }, (_, i) => buf.getChannelData(i));
+      pk = null;
+      // the timeline changed: start again from the beginning, whole (shortened) song
+      startEl.value = 0;
+      if (keepToEnd) durEl.value = '';
+      for (const el of [startEl, durEl]) el.dispatchEvent(new Event('input', { bubbles: true }));
+      onAudio(buf);
+      draw();
+    }
+    sil.scan.onclick = () => {
+      sil.scan.textContent = 'Đang tìm…';
+      setTimeout(() => { scan(); sil.scan.textContent = '✂️ Tìm đoạn im lặng thừa'; }, 30); // let the label paint first
+    };
+    sil.sens.onchange = scan;
+    box.querySelector('[data-a=close]').onclick = () => { sil.res.hidden = true; sil.scan.hidden = false; found = []; draw(); };
+    sil.cut.onclick = () => {
+      const cuts = chosenCuts();
+      if (!cuts.length) return;
+      const chs = Array.from({ length: original.numberOfChannels }, (_, i) => original.getChannelData(i));
+      const out = Core.removeRanges(chs, original.sampleRate, cuts);
+      const buf = new AudioBuffer({ length: out[0].length, numberOfChannels: out.length, sampleRate: original.sampleRate });
+      out.forEach((c, i) => buf.copyToChannel(c, i));
+      const removed = original.duration - buf.duration;
+      sil.res.hidden = true;
+      sil.done.hidden = false;
+      sil.done.querySelector('span').textContent = `✂️ Đã bỏ ${cuts.length} đoạn im lặng (−${sec(removed)}) · còn ${formatTime(buf.duration)}`;
+      found = [];
+      setCurrent(buf, true);
+      toast(`Đã bỏ ${sec(removed)} im lặng`);
+    };
+    box.querySelector('[data-a=undo]').onclick = () => {
+      sil.done.hidden = true;
+      sil.scan.hidden = false;
+      setCurrent(original, true);
+      toast('Đã khôi phục bài gốc');
+    };
+
     [startEl, durEl].forEach((el) => el.addEventListener('input', () => { if (!drag) draw(); }));
     if (window.ResizeObserver) new ResizeObserver(() => draw()).observe(wave);
     window.addEventListener('tabshown', () => requestAnimationFrame(draw));
@@ -170,6 +275,11 @@ const AudioTrim = (() => {
       setAudio(buf) {
         stop();
         audio = buf;
+        original = buf;
+        found = [];
+        sil.res.hidden = true;
+        sil.done.hidden = true;
+        sil.scan.hidden = false;
         channels = buf ? Array.from({ length: buf.numberOfChannels }, (_, i) => buf.getChannelData(i)) : null;
         pk = null;
         box.hidden = !buf;
