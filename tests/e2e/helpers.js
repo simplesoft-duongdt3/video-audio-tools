@@ -82,6 +82,8 @@ async function openTab(page, tab) {
   await page.goto('index.html' + (tab ? '#' + tab : ''));
   await page.waitForFunction(() => typeof Core !== 'undefined' && typeof VideoEngine !== 'undefined' && typeof SelfTest !== 'undefined' && window.JSZip);
   if (tab) await expect(page.locator('#tab-' + tab)).toHaveClass(/active/);
+  // "Nâng cao" sections are collapsed for users; tests drive the fields inside them directly
+  await page.evaluate(() => document.querySelectorAll('details.adv').forEach((d) => { d.open = true; }));
   return errors;
 }
 

@@ -359,6 +359,21 @@
     return Math.sqrt(s / Math.max(1, samples.length));
   }
 
+  /* ---------------- audio trimming (waveform handles) ---------------- */
+  /**
+   * New selection while dragging on the waveform. Times in seconds; d = song length.
+   * mode 'start' | 'end' moves one edge (kept ≥ min apart), 'move' slides the whole window (grab = where in it).
+   */
+  function trimDrag({ s, e, d, mode, t, grab = 0, min = 0.5 }) {
+    const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+    min = Math.min(min, d);
+    if (mode === 'start') return { s: clamp(t, 0, e - min), e };
+    if (mode === 'end') return { s, e: clamp(t, s + min, d) };
+    const len = Math.min(e - s, d);
+    const ns = clamp(t - grab, 0, d - len);
+    return { s: ns, e: ns + len };
+  }
+
   /* ---------------- Audio → Video layout ---------------- */
   /**
    * Where the cover art, title block, visualizer and time bar go, for any frame size (9:16, 4:5, 1:1, 16:9).
@@ -499,7 +514,7 @@
   }
 
   return {
-    audioFade, fadeGain, exportEstimate, friendlyError, FILTERS, applyFilter, avGeometry,
+    audioFade, fadeGain, exportEstimate, friendlyError, FILTERS, applyFilter, avGeometry, trimDrag,
     formatBytes, formatTime, baseName, detectPlatform,
     isHeic, isHeicBrand, looksLikeAudio, AUDIO_EXT, fitArea,
     exifOrientation, orientationApp1, stripJpegBytes,

@@ -68,7 +68,7 @@ test.describe('errors: plain language, retry, copy debug info', () => {
     await expect(box).toContainText('hết bộ nhớ');
     await expect(box).toContainText('720×1280'); // tells the user what to do
     await expect(box).toContainText('Array buffer allocation failed');
-    await expect(page.locator('#avRender')).toHaveText('Xuất video MP4'); // button usable again
+    await expect(page.locator('#avRender')).toHaveText('Xuất video'); // button usable again
 
     await spyCopy(page);
     await box.locator('[data-a=copy]').click();

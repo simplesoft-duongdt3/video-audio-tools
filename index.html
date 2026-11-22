@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600;800&family=Montserrat:wght@700;900&family=Playfair+Display:ital,wght@0,700;1,700&family=Lobster&family=Roboto+Mono:wght@700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css">
-<link rel="stylesheet" href="assets/style.css?v=b2e24dbd9e">
+<link rel="stylesheet" href="assets/style.css?v=ba91ac63b4">
 <!-- Mediabunny (MP4 + H.264/AAC encoding) is loaded on demand as an ES module; the AAC extension imports "mediabunny" too. -->
 <script type="importmap">{ "imports": { "mediabunny": "https://cdn.jsdelivr.net/npm/mediabunny@1.65.2/dist/bundles/mediabunny.min.mjs" } }</script>
 </head>
@@ -19,13 +19,13 @@
   <div class="tagline">100% chạy trên trình duyệt · không upload · không lưu trữ</div>
 </header>
 
-<nav class="tabs" id="tabs">
-  <button data-tab="convert" class="active">🔁 Chuyển định dạng</button>
-  <button data-tab="compress">🗜️ Nén ảnh</button>
-  <button data-tab="edit">✂️ Cắt &amp; Resize</button>
-  <button data-tab="imgvideo">🖼️ Ảnh + Audio → Video</button>
-  <button data-tab="textvideo">🔤 Text + Audio → Video</button>
-  <button data-tab="audiovideo">🎧 Audio → Video</button>
+<nav class="tabs" id="tabs" role="tablist" aria-label="Công cụ">
+  <button data-tab="convert" role="tab" aria-controls="tab-convert" aria-selected="true" class="active">🔁 Chuyển định dạng</button>
+  <button data-tab="compress" role="tab" aria-controls="tab-compress" aria-selected="false">🗜️ Nén ảnh</button>
+  <button data-tab="edit" role="tab" aria-controls="tab-edit" aria-selected="false">✂️ Cắt &amp; Resize</button>
+  <button data-tab="imgvideo" role="tab" aria-controls="tab-imgvideo" aria-selected="false">🖼️ Ảnh + Audio → Video</button>
+  <button data-tab="textvideo" role="tab" aria-controls="tab-textvideo" aria-selected="false">🔤 Text + Audio → Video</button>
+  <button data-tab="audiovideo" role="tab" aria-controls="tab-audiovideo" aria-selected="false">🎧 Audio → Video</button>
 </nav>
 
 <main>
@@ -35,7 +35,7 @@
   <p class="hint">Hỗ trợ đầu vào: HEIC/HEIF, JPG, PNG, WebP, GIF (khung đầu), BMP, AVIF, SVG… Xử lý hàng loạt. Đầu ra: JPG, PNG, WebP (trình duyệt không mã hoá được HEIC/AVIF; Safari không xuất được WebP).</p>
   <label class="drop" data-input="convFiles">
     <input type="file" id="convFiles" accept="image/*,.heic,.heif" multiple hidden>
-    <span>Kéo thả ảnh vào đây hoặc <u>bấm để chọn</u></span>
+    <span><span class="desk-only">Kéo thả ảnh vào đây hoặc </span><u>bấm để chọn ảnh</u></span>
   </label>
   <div class="row">
     <label>Định dạng đích
@@ -60,16 +60,16 @@
 <!-- ============ COMPRESS ============ -->
 <section class="panel" id="tab-compress">
   <h2>Nén ảnh</h2>
-  <p class="hint"><b>Lossless</b> (không đổi pixel): PNG/BMP được nén lại tối ưu; JPG được bỏ metadata (GPS, ảnh thumbnail, XMP…) mà không mã hoá lại, vẫn giữ hướng xoay &amp; màu ICC. <b>Lossy</b>: giảm chất lượng JPG/WebP hoặc giảm bảng màu PNG để file nhỏ hơn nhiều. Nếu kết quả không nhỏ hơn, file gốc được giữ lại.</p>
+  <p class="hint"><b>Giữ nguyên chất lượng</b> (không đổi pixel): PNG/BMP được nén lại tối ưu; JPG được bỏ metadata (GPS, ảnh thumbnail, XMP…) mà không mã hoá lại, vẫn giữ hướng xoay &amp; màu ICC. <b>Nén mạnh hơn</b>: giảm chất lượng JPG/WebP hoặc giảm bảng màu PNG để file nhỏ hơn nhiều. Nếu kết quả không nhỏ hơn, file gốc được giữ lại.</p>
   <label class="drop" data-input="cmpFiles">
     <input type="file" id="cmpFiles" accept="image/*,.heic,.heif" multiple hidden>
-    <span>Kéo thả ảnh vào đây hoặc <u>bấm để chọn</u></span>
+    <span><span class="desk-only">Kéo thả ảnh vào đây hoặc </span><u>bấm để chọn ảnh</u></span>
   </label>
   <div class="row">
     <label>Chế độ
       <select id="cmpMode">
-        <option value="lossless">Lossless (PNG tối ưu, không mất chất lượng)</option>
-        <option value="lossy">Lossy (giữ định dạng gốc, giảm chất lượng)</option>
+        <option value="lossless">Giữ nguyên chất lượng</option>
+        <option value="lossy">Nén mạnh hơn (giảm chất lượng)</option>
         <option value="webp">Chuyển sang WebP (nhỏ nhất)</option>
       </select>
     </label>
@@ -97,7 +97,7 @@
     <span>Chọn 1 ảnh để chỉnh sửa</span>
   </label>
   <div class="editor">
-    <div class="editor-stage"><img id="edImg" alt=""></div>
+    <div class="editor-stage"><p class="stage-empty" id="edEmpty">Chọn một ảnh ở trên để bắt đầu cắt, xoay, đổi kích thước.</p><img id="edImg" alt=""></div>
     <div class="editor-side">
       <div class="group">
         <div class="glabel">Tỉ lệ khung</div>
@@ -162,14 +162,11 @@
         <span>🎵 Chọn audio (mp3, m4a, wav, ogg…)</span>
       </label>
       <div class="hint" id="ivAudioInfo"></div>
-      <div class="hint warn ios-only" hidden>📱 iPhone không cho trang web mở bài hát trong app <b>Nhạc (Music)</b> — chỉ chọn được từ <b>Tệp (Files)</b> hoặc video trong <b>Ảnh</b>. Cách đưa nhạc vào Tệp: tải mp3 bằng Safari (vào Tệp › Tải về) · Zalo/Messenger/Telegram: giữ file › Chia sẻ › <i>Lưu vào Tệp</i> · Ghi âm: ••• › <i>Lưu vào Tệp</i> · AirDrop từ máy tính. Nhạc Apple Music có DRM nên không dùng được.</div>
+      <details class="hint warn ios-only" hidden><summary>📱 Không thấy bài hát trong app Nhạc?</summary>iPhone không cho trang web mở bài hát trong app <b>Nhạc (Music)</b> — chỉ chọn được từ <b>Tệp (Files)</b> hoặc video trong <b>Ảnh</b>. Cách đưa nhạc vào Tệp: tải mp3 bằng Safari (vào Tệp › Tải về) · Zalo/Messenger/Telegram: giữ file › Chia sẻ › <i>Lưu vào Tệp</i> · Ghi âm: ••• › <i>Lưu vào Tệp</i> · AirDrop từ máy tính. Nhạc Apple Music có DRM nên không dùng được.</details>
       <div class="glabel">Mẫu</div>
       <div class="tpl-picker" id="ivTemplates"></div>
       <label>Tiêu đề trên video (không bắt buộc) <input type="text" id="ivTitle" maxlength="80" placeholder="VD: Đà Lạt 2026 · Sinh nhật mẹ"></label>
-      <div class="row tight">
-        <label>Khung hình <select id="ivSize" class="size-select"></select></label>
-        <label>FPS <select id="ivFps"><option>24</option><option selected>30</option><option>60</option></select></label>
-      </div>
+      <label>Khung hình <select id="ivSize" class="size-select"></select></label>
       <div class="row tight">
         <label>Cách đặt ảnh
           <select id="ivFit">
@@ -196,19 +193,24 @@
           <select id="ivFilter"><option value="none">Gốc</option><option value="warm">Ấm</option><option value="cool">Lạnh</option><option value="bw">Đen trắng</option><option value="vintage">Cổ điển</option></select>
         </label>
       </div>
-      <div class="row tight">
-        <label>Bắt đầu audio từ (s) <input type="number" id="ivStart" value="0" min="0" step="0.1"></label>
-        <label>Thời lượng (s, trống = hết bài) <input type="number" id="ivDur" min="0.5" step="0.1"></label>
-      </div>
-      <label class="check"><input type="checkbox" id="ivProgress"> Thanh tiến trình ở đáy video</label>
+      <div id="ivTrim" hidden></div>
+      <details class="adv">
+        <summary>Nâng cao: độ mượt, thời điểm chính xác</summary>
+        <div class="row tight">
+          <label>Bắt đầu nhạc từ (giây) <input type="number" id="ivStart" value="0" min="0" step="0.1" inputmode="decimal"></label>
+          <label>Độ dài (giây, trống = hết bài) <input type="number" id="ivDur" min="0.5" step="0.1" inputmode="decimal"></label>
+        </div>
+        <label>Độ mượt (khung hình/giây) <select id="ivFps"><option>24</option><option selected>30</option><option>60</option></select></label>
+      </details>
+      <label class="check"><input type="checkbox" id="ivProgress"> Thanh thời gian ở đáy video</label>
       <div class="row">
         <button id="ivPlay">▶ Xem thử</button>
         <button class="primary" id="ivRender">Xuất video</button>
       </div>
-      <div class="progress" id="ivProg" hidden><div></div><span></span></div>
+      <div class="progress" id="ivProg" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-label="Tiến độ xuất video" hidden><div></div><span></span></div>
       <div id="ivOut"></div>
     </div>
-    <div class="preview"><canvas id="ivCanvas"></canvas></div>
+    <div class="preview"><canvas id="ivCanvas" role="img" aria-label="Xem trước video"></canvas></div>
   </div>
 </section>
 
@@ -274,23 +276,25 @@ Bắt đầu từ hôm nay nhé! 📚</textarea>
         <span>🎵 Chọn audio (không bắt buộc)</span>
       </label>
       <div class="hint" id="tvAudioInfo"></div>
-      <div class="hint warn ios-only" hidden>📱 iPhone không cho trang web mở bài hát trong app <b>Nhạc (Music)</b> — chỉ chọn được từ <b>Tệp (Files)</b> hoặc video trong <b>Ảnh</b>. Cách đưa nhạc vào Tệp: tải mp3 bằng Safari (vào Tệp › Tải về) · Zalo/Messenger/Telegram: giữ file › Chia sẻ › <i>Lưu vào Tệp</i> · Ghi âm: ••• › <i>Lưu vào Tệp</i> · AirDrop từ máy tính. Nhạc Apple Music có DRM nên không dùng được.</div>
-      <div class="row tight">
-        <label>Giây mỗi slide (khi không có audio / ghi đè) <input type="number" id="tvSlideDur" min="0.5" step="0.5" placeholder="tự động"></label>
-        <label>FPS <select id="tvFps"><option>24</option><option selected>30</option><option>60</option></select></label>
-      </div>
-      <label class="check"><input type="checkbox" id="tvProgress" checked> Thanh tiến trình ở đáy video</label>
+      <details class="hint warn ios-only" hidden><summary>📱 Không thấy bài hát trong app Nhạc?</summary>iPhone không cho trang web mở bài hát trong app <b>Nhạc (Music)</b> — chỉ chọn được từ <b>Tệp (Files)</b> hoặc video trong <b>Ảnh</b>. Cách đưa nhạc vào Tệp: tải mp3 bằng Safari (vào Tệp › Tải về) · Zalo/Messenger/Telegram: giữ file › Chia sẻ › <i>Lưu vào Tệp</i> · Ghi âm: ••• › <i>Lưu vào Tệp</i> · AirDrop từ máy tính. Nhạc Apple Music có DRM nên không dùng được.</details>
+      <label>Mỗi slide (giây) — để trống = tự chia theo nhạc <input type="number" id="tvSlideDur" min="0.5" step="0.5" placeholder="tự động" inputmode="decimal"></label>
+      <details class="adv">
+        <summary>Nâng cao: độ mượt</summary>
+        <label>Độ mượt (khung hình/giây) <select id="tvFps"><option>24</option><option selected>30</option><option>60</option></select></label>
+      </details>
+      <label class="check"><input type="checkbox" id="tvProgress" checked> Thanh thời gian ở đáy video</label>
       <div class="row">
         <button id="tvPlay">▶ Xem thử</button>
-        <button id="tvPng">Tải ảnh slide hiện tại</button>
-        <button id="tvZip">Tải tất cả slide (.zip)</button>
         <button class="primary" id="tvRender">Xuất video</button>
       </div>
-      <label>Xem slide <input type="range" id="tvScrub" min="0" max="0" value="0"></label>
-      <div class="progress" id="tvProg" hidden><div></div><span></span></div>
+      <div class="row tight secondary">
+        <button id="tvPng">Tải ảnh slide này (PNG)</button>
+        <button id="tvZip">Tải tất cả slide (.zip)</button>
+      </div>
+      <div class="progress" id="tvProg" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-label="Tiến độ xuất video" hidden><div></div><span></span></div>
       <div id="tvOut"></div>
     </div>
-    <div class="preview"><canvas id="tvCanvas"></canvas></div>
+    <div class="preview"><canvas id="tvCanvas" role="img" aria-label="Xem trước video"></canvas><label class="scrub">Xem slide <input type="range" id="tvScrub" min="0" max="0" value="0"></label></div>
   </div>
 </section>
 <!-- ============ AUDIO -> VIDEO ============ -->
@@ -304,7 +308,7 @@ Bắt đầu từ hôm nay nhé! 📚</textarea>
         <span>🎵 Chọn file audio (mp3, m4a, wav, aac, ogg, flac… hoặc video có tiếng)</span>
       </label>
       <div class="hint" id="avAudioInfo"></div>
-      <div class="hint warn ios-only" hidden>📱 iPhone không cho trang web mở bài hát trong app <b>Nhạc (Music)</b> — chỉ chọn được từ <b>Tệp (Files)</b> hoặc video trong <b>Ảnh</b>. Cách đưa nhạc vào Tệp: tải mp3 bằng Safari (vào Tệp › Tải về) · Zalo/Messenger/Telegram: giữ file › Chia sẻ › <i>Lưu vào Tệp</i> · Ghi âm: ••• › <i>Lưu vào Tệp</i> · AirDrop từ máy tính. Nhạc Apple Music có DRM nên không dùng được.</div>
+      <details class="hint warn ios-only" hidden><summary>📱 Không thấy bài hát trong app Nhạc?</summary>iPhone không cho trang web mở bài hát trong app <b>Nhạc (Music)</b> — chỉ chọn được từ <b>Tệp (Files)</b> hoặc video trong <b>Ảnh</b>. Cách đưa nhạc vào Tệp: tải mp3 bằng Safari (vào Tệp › Tải về) · Zalo/Messenger/Telegram: giữ file › Chia sẻ › <i>Lưu vào Tệp</i> · Ghi âm: ••• › <i>Lưu vào Tệp</i> · AirDrop từ máy tính. Nhạc Apple Music có DRM nên không dùng được.</details>
       <div class="glabel">Mẫu</div>
       <div class="tpl-picker" id="avTemplates"></div>
       <div class="row tight">
@@ -314,9 +318,9 @@ Bắt đầu từ hôm nay nhé! 📚</textarea>
       <div class="row tight">
         <label>Kiểu sóng nhạc
           <select id="avStyle">
-            <option value="bars">Cột phổ (spectrum)</option>
+            <option value="bars">Cột phổ</option>
             <option value="mirror">Cột đối xứng</option>
-            <option value="wave">Sóng âm (waveform)</option>
+            <option value="wave">Sóng âm</option>
             <option value="circle">Vòng tròn</option>
             <option value="overview">Dạng sóng cả bài</option>
             <option value="none">Không</option>
@@ -340,23 +344,25 @@ Bắt đầu từ hôm nay nhé! 📚</textarea>
         <span>🖼️ Ảnh bìa (không bắt buộc)</span>
       </label>
       <div class="hint" id="avImgInfo"></div>
-      <div class="row tight">
-        <label>Khung hình <select id="avSize" class="size-select"></select></label>
-        <label>FPS <select id="avFps"><option>24</option><option selected>30</option><option>60</option></select></label>
-      </div>
-      <div class="row tight">
-        <label>Bắt đầu audio từ (s) <input type="number" id="avStart" value="0" min="0" step="0.1"></label>
-        <label>Thời lượng (s, trống = hết bài) <input type="number" id="avDur" min="0.5" step="0.1"></label>
-      </div>
-      <label class="check"><input type="checkbox" id="avProgress" checked> Thanh thời gian</label>
+      <label>Khung hình <select id="avSize" class="size-select"></select></label>
+      <div id="avTrim" hidden></div>
+      <details class="adv">
+        <summary>Nâng cao: độ mượt, thời điểm chính xác</summary>
+        <div class="row tight">
+          <label>Bắt đầu nhạc từ (giây) <input type="number" id="avStart" value="0" min="0" step="0.1" inputmode="decimal"></label>
+          <label>Độ dài (giây, trống = hết bài) <input type="number" id="avDur" min="0.5" step="0.1" inputmode="decimal"></label>
+        </div>
+        <label>Độ mượt (khung hình/giây) <select id="avFps"><option>24</option><option selected>30</option><option>60</option></select></label>
+      </details>
+      <label class="check"><input type="checkbox" id="avProgress" checked> Thanh thời gian ở đáy video</label>
       <div class="row">
         <button id="avPlay">▶ Xem thử</button>
-        <button class="primary" id="avRender">Xuất video MP4</button>
+        <button class="primary" id="avRender">Xuất video</button>
       </div>
-      <div class="progress" id="avProg" hidden><div></div><span></span></div>
+      <div class="progress" id="avProg" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-label="Tiến độ xuất video" hidden><div></div><span></span></div>
       <div id="avOut"></div>
     </div>
-    <div class="preview"><canvas id="avCanvas"></canvas></div>
+    <div class="preview"><canvas id="avCanvas" role="img" aria-label="Xem trước video"></canvas></div>
   </div>
 </section>
 
@@ -370,31 +376,50 @@ Bắt đầu từ hôm nay nhé! 📚</textarea>
   </div>
   <div id="stOut"></div>
 </section>
+
+<!-- ============ PRIVACY / HOW IT WORKS (index.html#about) ============ -->
+<section class="panel" id="tab-about">
+  <h2>🔒 Quyền riêng tư &amp; cách hoạt động</h2>
+  <ul class="about">
+    <li><b>Ảnh, nhạc, video của bạn không rời khỏi máy.</b> Mọi việc chuyển định dạng, nén, cắt và tạo video đều chạy ngay trong trình duyệt. Trang không có máy chủ để nhận file.</li>
+    <li><b>Không tài khoản, không cookie, không theo dõi.</b> Trang không đếm lượt xem hay gửi dữ liệu sử dụng đi đâu.</li>
+    <li><b>Trình duyệt chỉ nhớ 2 thứ, trên chính máy này:</b> các mẫu bạn bấm “Lưu thành mẫu của tôi”, và tốc độ xuất video đo được (để ước tính thời gian). Xoá bằng cách xoá dữ liệu trang web trong cài đặt trình duyệt.</li>
+    <li><b>Thư viện và phông chữ được tải từ</b> jsDelivr, cdnjs và Google Fonts (như hầu hết trang web). Các dịch vụ này thấy địa chỉ IP của bạn khi tải, nhưng không thấy file của bạn.</li>
+    <li><b>“Sao chép thông tin lỗi”</b> chỉ chép chữ vào bộ nhớ tạm để bạn tự dán vào tin nhắn — không tự gửi đi.</li>
+  </ul>
+  <p class="hint">Gặp lỗi hoặc muốn góp ý? <a href="https://github.com/simplesoft-duongdt3/video-audio-tools/issues/new" target="_blank" rel="noopener">Mở góp ý trên GitHub</a>, kèm kết quả <a href="#selftest">Tự kiểm tra thiết bị</a> nếu có.</p>
+</section>
 </main>
 
 <footer class="foot">
   Mọi xử lý diễn ra trên máy bạn. Video xuất MP4 (H.264 + AAC) qua WebCodecs trên Chrome/Edge/Safari/Firefox mới; trình duyệt cũ sẽ ghi thời gian thực.
   <span id="caps"></span>
-  · <a href="#selftest" id="stLink">🩺 Tự kiểm tra thiết bị</a>
+  <nav class="foot-links" aria-label="Thông tin">
+    <a href="Help/huong-dan-iphone.html" id="helpLink">📖 Hướng dẫn dùng trên iPhone</a>
+    <a href="#selftest" id="stLink">🩺 Tự kiểm tra thiết bị</a>
+    <a href="#about" id="aboutLink">🔒 Quyền riêng tư</a>
+    <a href="https://github.com/simplesoft-duongdt3/video-audio-tools/issues/new" target="_blank" rel="noopener" id="fbLink">💬 Góp ý / báo lỗi</a>
+  </nav>
 </footer>
 
-<div id="toast"></div>
+<div id="toast" role="status" aria-live="polite"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/1.0.11/pako.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/upng-js@2.1.0/UPNG.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js" defer></script>
-<script src="js/core.js?v=b2938dc46e"></script>
-<script src="js/common.js?v=e9cb0c0cd8"></script>
+<script src="js/core.js?v=6c92d65217"></script>
+<script src="js/common.js?v=26bb3543b1"></script>
 <script src="js/convert.js?v=a892107986"></script>
 <script src="js/compress.js?v=c9854c750d"></script>
-<script src="js/editor.js?v=5a58c6ba54"></script>
+<script src="js/editor.js?v=ed5bd6831c"></script>
+<script src="js/trim.js?v=96a9a451b8"></script>
 <script src="js/templates.js?v=efe79e3f4f"></script>
-<script src="js/video-engine.js?v=5ff0230296"></script>
-<script src="js/image-video.js?v=9d9ca9d95d"></script>
+<script src="js/video-engine.js?v=0743c66684"></script>
+<script src="js/image-video.js?v=7d03061b6c"></script>
 <script src="js/text-video.js?v=bba5c217f0"></script>
-<script src="js/audio-video.js?v=895756b0ef"></script>
-<script src="js/selftest.js?v=b54a546883"></script>
+<script src="js/audio-video.js?v=cab91b9de4"></script>
+<script src="js/selftest.js?v=ff89eecc2a"></script>
 </body>
 </html>

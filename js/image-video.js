@@ -6,6 +6,7 @@
   const player = new VideoEngine.Player(canvas);
   let rw = null; // export button (estimate line)
   const thumbCache = new Map(); // template thumbnails + empty preview (sample photo)
+  const trim = AudioTrim.mount({ box: $('ivTrim'), startId: 'ivStart', durId: 'ivDur' });
 
   /* ---------------- templates ---------------- */
   /** Look = what a template sets that has no control: title font/colour/position and cinema bars. */
@@ -247,6 +248,8 @@
       makeDraw({ ...s, duration: 4, title: s.title || 'Tiêu đề của bạn' }, [Templates.samplePhoto()], thumbCache)(canvas.getContext('2d'), 1, true);
     }
     if (rw) rw.refresh();
+    if (!audio && images.length) $('ivAudioInfo').textContent = '🔇 Chưa có nhạc — video sẽ không có tiếng.';
+    else if (!audio) $('ivAudioInfo').textContent = '';
   }
 
   function renderThumbs() {
@@ -280,9 +283,11 @@
       audio = await decodeAudioFile(f);
       audioName = baseName(f.name);
       $('ivAudioInfo').textContent = `🎵 ${f.name} — ${formatTime(audio.duration)}`;
+      trim.setAudio(audio);
       preview();
     } catch (e) {
       audio = null;
+      trim.setAudio(null);
       $('ivAudioInfo').textContent = e.message;
     }
   });
@@ -296,6 +301,7 @@
   $('ivPlay').onclick = async () => {
     if (player.playing) { player.stop(); $('ivPlay').textContent = '▶ Xem thử'; preview(); return; }
     if (!images.length) return toast('Hãy chọn ít nhất 1 ảnh');
+    trim.stop();
     audioCtx().resume(); // inside the tap, before any await (iOS)
     await ensureFonts();
     const sc = scene();

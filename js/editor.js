@@ -38,6 +38,8 @@
       const active = document.querySelector('#edRatios .active');
       cropper.setAspectRatio(active ? parseFloat(active.dataset.r) : NaN);
       $('edExport').disabled = false;
+      $('edEmpty').hidden = true;
+      document.querySelector('.drop[data-input="edFile"] span').textContent = `🔄 Đổi ảnh · ${f.name}`;
     } catch (e) {
       toast(e.message);
     }

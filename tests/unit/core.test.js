@@ -360,3 +360,18 @@ test('friendlyError: decode failures vs encoder failures are told apart', () => 
   assert.match(C.friendlyError('Encoding error.', 'EncodingError').title, /mã hoá/);
   assert.doesNotMatch(C.friendlyError('x', 'EncodingError').title, /audio/);
 });
+
+test('trimDrag: handles keep ≥ min apart and inside the song; moving keeps the length', () => {
+  const base = { s: 10, e: 40, d: 100 };
+  assert.deepEqual(C.trimDrag({ ...base, mode: 'start', t: 5 }), { s: 5, e: 40 });
+  assert.deepEqual(C.trimDrag({ ...base, mode: 'start', t: 60 }), { s: 39.5, e: 40 }, 'start cannot pass the end');
+  assert.deepEqual(C.trimDrag({ ...base, mode: 'start', t: -3 }), { s: 0, e: 40 });
+  assert.deepEqual(C.trimDrag({ ...base, mode: 'end', t: 120 }), { s: 10, e: 100 });
+  assert.deepEqual(C.trimDrag({ ...base, mode: 'end', t: 2 }), { s: 10, e: 10.5 }, 'end cannot pass the start');
+  assert.deepEqual(C.trimDrag({ ...base, mode: 'move', t: 50, grab: 5 }), { s: 45, e: 75 });
+  assert.deepEqual(C.trimDrag({ ...base, mode: 'move', t: 99, grab: 0 }), { s: 70, e: 100 }, 'window stops at the song end');
+  assert.deepEqual(C.trimDrag({ ...base, mode: 'move', t: -9, grab: 0 }), { s: 0, e: 30 });
+  // song shorter than the minimum: still a valid window
+  const tiny = C.trimDrag({ s: 0, e: 0.3, d: 0.3, mode: 'end', t: 0 });
+  assert.ok(tiny.e >= tiny.s);
+});

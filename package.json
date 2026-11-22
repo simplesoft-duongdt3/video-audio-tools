@@ -5,6 +5,7 @@
   "scripts": {
     "serve": "python3 -m http.server 8765",
     "stamp": "node scripts/stamp.mjs",
+    "help": "node scripts/make-help.mjs",
     "fixtures": "node tests/make-fixtures.mjs",
     "test:unit": "node --test tests/unit/*.test.js",
     "test:e2e": "playwright test",

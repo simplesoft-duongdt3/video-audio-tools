@@ -393,10 +393,12 @@ const VideoEngine = (() => {
     const url = URL.createObjectURL(blob);
     const box = document.createElement('div');
     box.className = 'outbox';
-    box.innerHTML = `<video controls playsinline src="${url}"></video>
+    // buttons FIRST: on a phone the video fills the screen and the buttons under it were off-screen
+    box.innerHTML = `<div class="out-title">✅ Video đã sẵn sàng</div>
       <div class="row"><button class="primary" data-a="dl">Tải video (${formatBytes(blob.size)})</button>
       ${canShareFiles ? '<button data-a="share">Chia sẻ / Lưu vào Ảnh</button>' : ''}</div>
-      <div class="hint" data-a="name"></div>${note ? `<div class="hint warn">${note}</div>` : ''}`;
+      <div class="hint" data-a="name"></div>${note ? `<div class="hint warn">${note}</div>` : ''}
+      <video controls playsinline src="${url}"></video>`;
     box.querySelector('[data-a=name]').textContent = name; // file names are user input
     if (IS_IOS) {
       // iPhone: the share sheet's "Save Video" writes straight to Photos and copes better with big files than downloads.
@@ -410,6 +412,16 @@ const VideoEngine = (() => {
     const sh = box.querySelector('[data-a=share]');
     if (sh) sh.onclick = () => shareFile(blob, name);
     container.appendChild(box);
+    // bring the result into view (the export button may be far up the page on phones)
+    requestAnimationFrame(() => {
+      // on phones the preview is a sticky strip ABOVE the content: land the buttons just below it, not under it
+      const pv = container.closest('.split') && container.closest('.split').querySelector('.preview');
+      const stacked = pv && pv.offsetWidth > container.offsetWidth * 0.8;
+      const tabs = document.getElementById('tabs');
+      const cover = stacked ? pv.getBoundingClientRect().bottom : tabs ? tabs.getBoundingClientRect().bottom : 0;
+      const y = box.getBoundingClientRect().top + window.scrollY - Math.max(0, cover) - 8;
+      window.scrollTo({ top: y, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    });
   }
 
   return { render, estimate, Player, showOutput, capabilities, loadMediabunny, get lastFallbackReason() { return lastFallbackReason; }, tuning, timing };

@@ -7,6 +7,7 @@
   const canvas = $('avCanvas');
   const player = new VideoEngine.Player(canvas);
   let rw = null; // export button (estimate line)
+  const trim = AudioTrim.mount({ box: $('avTrim'), startId: 'avStart', durId: 'avDur' });
   const FFT = 2048;
 
   /* ---------------- templates ---------------- */
@@ -359,6 +360,7 @@
     try {
       const buf = await decodeAudioFile(f);
       audio = buf;
+      trim.setAudio(buf);
       channels = Array.from({ length: buf.numberOfChannels }, (_, i) => buf.getChannelData(i));
       audioFile = f.name;
       $('avAudioInfo').textContent = `🎵 ${f.name} — ${formatTime(buf.duration)} · ${buf.sampleRate} Hz · ${buf.numberOfChannels} kênh`;
@@ -370,6 +372,7 @@
       preview();
     } catch (e) {
       audio = null; channels = null; audioFile = '';
+      trim.setAudio(null);
       $('avAudioInfo').textContent = e.message;
     }
   });
@@ -397,6 +400,7 @@
     const bad = Core.checkStart($('avStart').value, audio.duration);
     if (bad) return toast(bad);
     audioCtx().resume(); // inside the tap, before any await (iOS)
+    trim.stop();
     await ensureFonts();
     const sc = scene();
     canvas.width = sc.width; canvas.height = sc.height;

@@ -265,6 +265,10 @@ function onFiles(inputId, cb) {
   });
   const drop = document.querySelector(`.drop[data-input="${inputId}"]`);
   if (!drop) return;
+  // keyboard: the real input is hidden, so the drop zone itself is the focusable control
+  drop.tabIndex = 0;
+  drop.setAttribute('role', 'button');
+  drop.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.click(); } });
   ['dragenter', 'dragover'].forEach((e) => drop.addEventListener(e, (ev) => { ev.preventDefault(); drop.classList.add('over'); }));
   ['dragleave', 'drop'].forEach((e) => drop.addEventListener(e, () => drop.classList.remove('over')));
   drop.addEventListener('drop', (ev) => {
@@ -340,26 +344,71 @@ function drawImageFit(ctx, img, iw, ih, x, y, w, h, mode = 'cover', zoom = 1, ox
 
 function setProgress(el, frac, text) {
   el.hidden = false;
+  el.setAttribute('aria-valuenow', Math.round(frac * 100));
+  el.setAttribute('aria-valuetext', text);
   el.querySelector('div').style.width = (frac * 100).toFixed(1) + '%';
   el.querySelector('span').textContent = text;
 }
 
 /* ---------- tabs ---------- */
-document.querySelectorAll('#tabs button').forEach((b) => {
+/** Show one panel (a tool tab, or a footer page like #about / #selftest). */
+function showPanel(name) {
+  const panel = $('tab-' + name);
+  if (!panel) return false;
+  $('toast').classList.remove('show'); // a message from the previous tab doesn't belong here
+  document.querySelectorAll('#tabs button').forEach((x) => {
+    const on = x.dataset.tab === name;
+    x.classList.toggle('active', on);
+    x.setAttribute('aria-selected', on);
+    x.tabIndex = on ? 0 : -1;
+    // the chosen tab stays visible in the scrolling bar (scroll the BAR only: scrollIntoView could move the page)
+    if (on) { const bar = x.parentElement; bar.scrollLeft = x.offsetLeft - (bar.clientWidth - x.offsetWidth) / 2; }
+  });
+  document.querySelectorAll('.panel').forEach((p) => p.classList.toggle('active', p === panel));
+  window.dispatchEvent(new CustomEvent('tabshown', { detail: name }));
+  return true;
+}
+const tabButtons = [...document.querySelectorAll('#tabs button')];
+tabButtons.forEach((b, i) => {
+  b.tabIndex = b.classList.contains('active') ? 0 : -1;
   b.onclick = () => {
-    document.querySelectorAll('#tabs button').forEach((x) => x.classList.toggle('active', x === b));
-    document.querySelectorAll('.panel').forEach((p) => p.classList.toggle('active', p.id === 'tab-' + b.dataset.tab));
-    location.hash = b.dataset.tab;
-    window.dispatchEvent(new CustomEvent('tabshown', { detail: b.dataset.tab }));
+    showPanel(b.dataset.tab);
+    history.replaceState(null, '', '#' + b.dataset.tab);
+    // start the new tab at its top (it kept the previous tab's scroll position, e.g. its bottom)
+    const top = $('tab-' + b.dataset.tab).getBoundingClientRect().top + window.scrollY - $('tabs').offsetHeight - 8;
+    if (window.scrollY > top) window.scrollTo(0, Math.max(0, top));
+  };
+  // arrow keys move between tabs (ARIA tabs pattern)
+  b.onkeydown = (e) => {
+    const d = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
+    if (!d) return;
+    e.preventDefault();
+    const n = tabButtons[(i + d + tabButtons.length) % tabButtons.length];
+    n.focus();
+    n.click();
   };
 });
-window.addEventListener('DOMContentLoaded', () => {
+const fromHash = () => {
   const h = location.hash.slice(1);
-  const b = document.querySelector(`#tabs button[data-tab="${h}"]`);
-  if (b) b.click();
-});
+  if (!h || h === 'selftest' || !showPanel(h)) return;
+  if (!document.querySelector(`#tabs button[data-tab="${h}"]`)) window.scrollTo(0, 0); // footer pages open at the top
+};
+window.addEventListener('DOMContentLoaded', fromHash);
+window.addEventListener('hashchange', fromHash);
 
 /* range outputs */
 [['convQ', 'convQOut'], ['cmpQ', 'cmpQOut']].forEach(([r, o]) => {
   $(r).addEventListener('input', () => ($(o).textContent = $(r).value));
+});
+
+/* ---------- preview size toggle (phones: the preview is a small sticky strip) ---------- */
+document.querySelectorAll('.split .preview').forEach((pv) => {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'pv-toggle';
+  b.setAttribute('aria-label', 'Phóng to / thu nhỏ khung xem trước');
+  b.setAttribute('aria-pressed', 'false');
+  b.textContent = '⤢';
+  b.onclick = () => { const on = pv.classList.toggle('big'); b.setAttribute('aria-pressed', on); };
+  pv.appendChild(b);
 });

@@ -168,7 +168,7 @@ test.describe('audio → video', () => {
     await page.click('#avRender');
     await expect(page.locator('#avRender')).toHaveText('Huỷ');
     await page.click('#avRender');
-    await expect(page.locator('#avRender')).toHaveText('Xuất video MP4');
+    await expect(page.locator('#avRender')).toHaveText('Xuất video');
     await expect(page.locator('#avOut video')).toHaveCount(0);
     await expect(page.locator('#toast')).toContainText('Đã huỷ');
     await expect(page.locator('#avOut .errbox'), 'cancel is not an error').toHaveCount(0);
@@ -216,9 +216,7 @@ test.describe('export path robustness (TikTok stutter / slow export)', () => {
     const deltas = new Set(pts.slice(1).map((p, i) => (p - pts[i]).toFixed(4)));
     expect([...deltas]).toEqual(['0.0333']); // the real check: every frame exactly 1/30 s apart (no stutter)
     // ~3 s × 30 fps. Decoders disagree on an mp3's length by a few ms (encoder padding: WebKit/GStreamer
-    // gives 3.02 s → 91 frames), so the count follows the file's own duration instead of a fixed 90.
-    const dur = probe(dl.path).duration;
-    expect(Math.abs(pts.length - Math.round(dur * 30)), `${pts.length} frames for ${dur}s`).toBeLessThanOrEqual(1);
+    // gives 3.02 s → 91 frames). The file's duration can't be used: its AAC track is longer than the video.
     expect(pts.length).toBeGreaterThanOrEqual(89);
     expect(pts.length).toBeLessThanOrEqual(92);
   });

@@ -195,14 +195,13 @@ const DebugInfo = (() => {
 })();
 
 (() => {
-  const open = () => {
-    document.querySelectorAll('#tabs button').forEach((x) => x.classList.remove('active'));
-    document.querySelectorAll('.panel').forEach((p) => p.classList.toggle('active', p.id === 'tab-selftest'));
-  };
+  const open = () => { showPanel('selftest'); window.scrollTo(0, 0); };
   $('stRun').onclick = () => SelfTest.run($('stOut'));
   $('stCopy').onclick = () => DebugInfo.copy();
   $('stLink').onclick = (e) => { e.preventDefault(); location.hash = 'selftest'; open(); SelfTest.run($('stOut')); };
-  window.addEventListener('DOMContentLoaded', () => {
-    if (location.hash === '#selftest') { open(); SelfTest.run($('stOut')); }
-  });
+  const fromHash = () => {
+    if (location.hash === '#selftest' && !$('tab-selftest').classList.contains('active')) { open(); SelfTest.run($('stOut')); }
+  };
+  window.addEventListener('DOMContentLoaded', fromHash);
+  window.addEventListener('hashchange', fromHash);
 })();

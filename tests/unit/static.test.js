@@ -75,3 +75,20 @@ test('CI workflow runs unit + e2e tests and gates the Pages deploy on them', () 
   assert.match(wf, /playwright test/);
   assert.match(wf, /needs:\s*\[?\s*test/);
 });
+
+test('local links in index.html point at files that exist (iPhone guide, …)', () => {
+  const hrefs = [...html.matchAll(/<a [^>]*href="([^"#:]+)"/g)].map((m) => m[1]);
+  assert.ok(hrefs.includes('Help/huong-dan-iphone.html'));
+  for (const h of hrefs) assert.ok(existsSync(join(ROOT, h)), h);
+});
+
+test('iPhone guide is one self-contained file: images embedded, no external resources', () => {
+  const g = readFileSync(join(ROOT, 'Help', 'huong-dan-iphone.html'), 'utf8');
+  const imgs = [...g.matchAll(/<img [^>]*src="([^"]+)"/g)].map((m) => m[1]);
+  assert.ok(imgs.length >= 12, `${imgs.length} screenshots`);
+  for (const s of imgs) assert.match(s.slice(0, 30), /^data:image\/jpeg;base64,/);
+  assert.doesNotMatch(g, /<(script|link)\b[^>]*(src|href)="https?:/, 'no CDN scripts / stylesheets');
+  assert.match(g, /<html lang="vi">/);
+  assert.match(g, /name="viewport"/);
+  assert.match(g, /href="\.\.\/index\.html"/, 'links back to the app');
+});
