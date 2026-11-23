@@ -328,7 +328,7 @@ test('every slideshow filter option in index.html is implemented by Core.applyFi
 
 test('avGeometry: art, title block, visualizer and time bar never overlap, at every size × layout × style', () => {
   const sizes = [[1080, 1920], [720, 1280], [1080, 1350], [1080, 1080], [1920, 1080], [1280, 720]];
-  for (const [W, H] of sizes) for (const layout of ['cover', 'top', 'minimal']) for (const style of ['bars', 'circle', 'overview']) for (const badge of [false, true]) for (const titleScale of [1, 1.3]) {
+  for (const [W, H] of sizes) for (const layout of ['cover', 'top', 'minimal']) for (const style of ['bars', 'circle', 'overview', 'vinyl']) for (const badge of [false, true]) for (const titleScale of [1, 1.3]) {
     const g = C.avGeometry(W, H, layout, style, { badge, titleScale });
     const id = `${W}×${H} ${layout} ${style}${badge ? ' +badge' : ''} ×${titleScale}`;
     if (badge) {
@@ -368,6 +368,13 @@ test('avGeometry: art, title block, visualizer and time bar never overlap, at ev
   assert.ok(C.avGeometry(1080, 1920, 'cover', 'bars', { badge: true }).A >= 400);
   assert.ok(C.avGeometry(1080, 1920, 'cover', 'circle').A >= 400);
   assert.ok(C.avGeometry(1080, 1920, 'cover', 'circle', { badge: true }).A >= 240);
+  // record / orb: no empty visualizer band — the art gets that space (QC: ~300 px gap before)
+  for (const style of ['vinyl', 'orb']) for (const [W, H] of [[1080, 1920], [1080, 1080], [1920, 1080]]) {
+    const g = C.avGeometry(W, H, 'cover', style), b = C.avGeometry(W, H, 'cover', 'bars');
+    assert.equal(g.vh, 0, `${style} ${W}×${H}: no visualizer band`);
+    if (H >= W) assert.ok(g.zones.prog[0] - g.zones.text[1] <= H * 0.035 * 2 + 1, `${style} ${W}×${H}: title → time bar gap ${g.zones.prog[0] - g.zones.text[1]}`);
+    if (style === 'orb' && H >= W) assert.ok(g.A > b.A, `${style} ${W}×${H}: bigger art (${g.A} > ${b.A})`);
+  }
 });
 
 test('friendlyError: decode failures vs encoder failures are told apart', () => {
@@ -452,4 +459,60 @@ test('colour sets: every one is readable (WCAG) and well-formed', () => {
   }
   assert.ok(new Set(C.PALETTES.map((p) => p.mood)).size >= 4);
   assert.equal(C.contrast('#000000', '#ffffff').toFixed(0), '21');
+});
+
+/** n seconds of a 120 BPM kick (60 Hz thump, 0.12 s) over an optional sine pad */
+function kicks(seconds, sr, bpm = 120, pad = 0) {
+  const x = new Float32Array(seconds * sr), period = 60 / bpm;
+  for (let i = 0; i < x.length; i++) {
+    const t = i / sr, d = t % period;
+    x[i] = (d < 0.12 ? Math.sin(2 * Math.PI * 60 * d) * Math.exp(-d * 25) * 0.9 : 0) + pad * Math.sin(2 * Math.PI * 440 * t);
+  }
+  return x;
+}
+
+test('bassOnsets: a 120 BPM kick gives ~2 hits/s on the beat; a steady pad or silence gives none; ≤ 4/s', () => {
+  const sr = 22050;
+  const on = C.bassOnsets([kicks(6, sr, 120, 0.2)], sr);
+  assert.ok(on.length >= 10 && on.length <= 13, `${on.length} hits in 6 s`);
+  for (const o of on) {
+    const phase = o.t % 0.5;
+    assert.ok(phase < 0.08 || phase > 0.46, `hit at ${o.t.toFixed(3)} s is on a beat`);
+    assert.ok(o.s >= 0.4 && o.s <= 1);
+  }
+  const pad = new Float32Array(6 * sr).map((_, i) => 0.4 * Math.sin((2 * Math.PI * 440 * i) / sr));
+  assert.equal(C.bassOnsets([pad], sr).length, 0, 'sine pad: no beats');
+  assert.equal(C.bassOnsets([new Float32Array(6 * sr)], sr).length, 0, 'silence: no beats');
+  const four = C.bassOnsets([kicks(8, sr, 240)], sr); // 4 kicks/s: all of them (QC found 25 % dropped)
+  assert.ok(four.length >= 30, `${four.length} of 32 hits at 4/s`);
+  const fast = C.bassOnsets([kicks(4, sr, 480)], sr); // 8 kicks/s
+  for (let i = 1; i < fast.length; i++) assert.ok(fast[i].t - fast[i - 1].t >= 0.23, 'refractory ~0.24 s');
+  assert.ok(fast.length <= 4 * 4 + 1, '≤ ~4 hits/s even for 8 kicks/s');
+});
+
+test('punchAt / bassPush: depend only on t (seekable), attack + decay, monotonic push', () => {
+  const on = [{ t: 1, s: 1 }, { t: 2, s: 0.5 }];
+  assert.equal(C.punchAt(on, 0.5), 0);
+  assert.ok(Math.abs(C.punchAt(on, 1.02) - 0.5) < 1e-9, 'half-way up the 40 ms attack');
+  assert.ok(Math.abs(C.punchAt(on, 1.04) - 1) < 1e-9);
+  assert.ok(C.punchAt(on, 1.3) < 0.2, 'decays');
+  assert.ok(C.punchAt(on, 2.04) <= 0.5 + 1e-9, 'scaled by strength');
+  assert.equal(C.punchAt(on, 1.7), C.punchAt(on, 1.7), 'same t → same value');
+  let prev = -1;
+  for (let t = 0; t < 4; t += 0.05) { const b = C.bassPush(on, t); assert.ok(b >= prev - 1e-12); prev = b; }
+  assert.equal(C.bassPush([], 3), 0);
+});
+
+test('envelope / envAt / prng / bandGroups', () => {
+  const sr = 8000, x = new Float32Array(sr * 2);
+  for (let i = sr; i < 2 * sr; i++) x[i] = 0.5 * Math.sin(i);
+  const env = C.envelope([x], sr);
+  assert.equal(env.length, 100);
+  assert.ok(env[10] < 0.01 && env[80] > 0.9, 'quiet first second, loud (normalised) second');
+  assert.ok(Math.abs(C.envAt(env, 1.6) - env[80]) < 1e-6);
+  const a = C.prng(42), b = C.prng(42);
+  const xs = Array.from({ length: 5 }, a);
+  assert.deepEqual(xs, Array.from({ length: 5 }, b), 'same seed, same sequence');
+  assert.ok(xs.every((v) => v >= 0 && v < 1) && new Set(xs).size === 5);
+  assert.deepEqual([...C.bandGroups(Float32Array.from([1, 1, 0, 0, 0.5, 0.5, 1, 0]), 4)], [1, 0, 0.5, 0.5]);
 });

@@ -495,6 +495,120 @@
     });
   }
 
+  /* ---------------- beat-reactive visuals (deterministic: pure functions of time) ---------------- */
+  /**
+   * Loudness envelope of a clip, `rate` values per second, normalised so the loudest point is 1.
+   * channels: Float32Array[]; from/len in samples. → Float32Array
+   */
+  function envelope(channels, sr, from = 0, len = channels[0].length - from, rate = 50) {
+    const hop = Math.max(1, Math.round(sr / rate)), n = Math.max(1, Math.ceil(len / hop));
+    const out = new Float32Array(n);
+    let max = 1e-9;
+    for (let k = 0; k < n; k++) {
+      let e = 0, c = 0;
+      const a = from + k * hop, b = Math.min(from + len, a + hop, channels[0].length);
+      for (const ch of channels) for (let i = a; i < b; i += 2) { e += ch[i] * ch[i]; c++; }
+      out[k] = c ? Math.sqrt(e / c) : 0;
+      if (out[k] > max) max = out[k];
+    }
+    for (let k = 0; k < n; k++) out[k] /= max;
+    return out;
+  }
+  /** Linear interpolation into an envelope at time t (seconds from the clip start). */
+  const envAt = (env, t, rate = 50) => {
+    if (!env || !env.length) return 0;
+    const x = Math.max(0, Math.min(env.length - 1, t * rate)), i = Math.floor(x), f = x - i;
+    return env[i] * (1 - f) + (env[Math.min(env.length - 1, i + 1)] || 0) * f;
+  };
+
+  /**
+   * Bass hits (kick drum / beat) of a clip: low-pass (~150 Hz, two one-pole stages) → energy per 1024-sample
+   * hop (log-compressed) → positive flux above an adaptive threshold (1.5 × mean + 0.5 × std of the last
+   * 0.75 s, and a floor) that is a local maximum; at most one hit per 0.25 s (≤ 4/s).
+   * → [{ t: seconds from the clip start, s: strength 0.4–1 }]
+   */
+  function bassOnsets(channels, sr, from = 0, len = channels[0].length - from) {
+    const hop = 1024, n = Math.floor(len / hop);
+    if (n < 4) return [];
+    const a = 1 - Math.exp((-2 * Math.PI * 150) / sr);
+    let y1 = 0, y2 = 0;
+    const E = new Float32Array(n);
+    for (let k = 0; k < n; k++) {
+      let e = 0;
+      for (let i = from + k * hop, end = i + hop; i < end; i++) {
+        let x = 0;
+        for (const ch of channels) x += ch[i] || 0;
+        x /= channels.length;
+        y1 += a * (x - y1); y2 += a * (y1 - y2); // 2nd-order low-pass
+        e += y2 * y2;
+      }
+      E[k] = Math.log1p(Math.sqrt(e / hop) * 10);
+    }
+    const flux = new Float32Array(n);
+    for (let k = 1; k < n; k++) flux[k] = Math.max(0, E[k] - E[k - 1]);
+    // ≥ 0.24 s between hits (≤ ~4/s): 0.25 s missed real 4 Hz kicks that land 10 or 11 hops apart
+    const win = Math.max(2, Math.round((0.75 * sr) / hop)), gap = Math.floor((0.24 * sr) / hop);
+    const floor = Math.log1p(Math.pow(10, -50 / 20) * 10) * 0.5;
+    let maxF = 1e-9;
+    for (let k = 0; k < n; k++) if (flux[k] > maxF) maxF = flux[k];
+    const out = [];
+    let last = -Infinity;
+    for (let k = 1; k < n - 2; k++) {
+      let m = 0, v = 0, c = 0;
+      for (let j = Math.max(0, k - win); j < k; j++) { m += flux[j]; c++; }
+      m = c ? m / c : 0;
+      for (let j = Math.max(0, k - win); j < k; j++) v += (flux[j] - m) ** 2;
+      const sd = c ? Math.sqrt(v / c) : 0;
+      const f = flux[k];
+      const peak = f >= flux[k - 1] && f >= flux[k + 1] && f >= (flux[k - 2] || 0) && f >= flux[k + 2];
+      if (f > Math.max(floor, 1.5 * m + 0.5 * sd) && peak && k - last >= gap) {
+        out.push({ t: (k * hop) / sr, s: Math.max(0.4, Math.min(1, f / maxF)) });
+        last = k;
+      }
+    }
+    return out;
+  }
+
+  /** Index of the last onset at or before t (binary search), or −1. */
+  function lastOnset(onsets, t) {
+    let lo = 0, hi = onsets.length - 1, r = -1;
+    while (lo <= hi) { const mid = (lo + hi) >> 1; if (onsets[mid].t <= t) { r = mid; lo = mid + 1; } else hi = mid - 1; }
+    return r;
+  }
+  /** "Punch" 0..1 at time t: 40 ms attack, exponential decay (tau s). Depends only on t → seekable. */
+  function punchAt(onsets, t, tau = 0.15) {
+    let p = 0;
+    for (let i = lastOnset(onsets, t); i >= 0 && t - onsets[i].t < tau * 6; i--) {
+      const d = t - onsets[i].t;
+      p = Math.max(p, onsets[i].s * (d < 0.04 ? d / 0.04 : Math.exp(-(d - 0.04) / tau)));
+    }
+    return Math.min(1, p);
+  }
+  /** Cumulative bass "push" (monotonic in t): each hit adds its strength, eased over 0.4 s. */
+  function bassPush(onsets, t) {
+    let b = 0;
+    for (let i = lastOnset(onsets, t); i >= 0; i--) b += onsets[i].s * (1 - Math.exp(-(t - onsets[i].t) / 0.4));
+    return b;
+  }
+  /** Small seeded PRNG (mulberry32): the same "random" particles in every preview and export. */
+  function prng(seed) {
+    return () => {
+      seed |= 0; seed = (seed + 0x6d2b79f5) | 0;
+      let r = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      r = (r + Math.imul(r ^ (r >>> 7), 61 | r)) ^ r;
+      return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  /** Mean of band groups: k groups over the band array (low → high). */
+  function bandGroups(bands, k) {
+    const out = new Float32Array(k), n = bands.length;
+    for (let g = 0; g < k; g++) {
+      const a = Math.floor((g * n) / k), b = Math.max(a + 1, Math.floor(((g + 1) * n) / k));
+      let s = 0; for (let i = a; i < b; i++) s += bands[i]; out[g] = s / (b - a);
+    }
+    return out;
+  }
+
   /* ---------------- Audio → Video layout ---------------- */
   /**
    * Where the cover art, title block, visualizer and time bar go, for any frame size (9:16, 4:5, 1:1, 16:9).
@@ -512,9 +626,12 @@
     const TEXT_H = 252 * u * titleScale; // 2 title lines + subtitle (drawText); script fonts are drawn larger
     const PROG_H = 76 * u; // knob (12u above the bar) + bar + time labels (34u)
     const BADGE_H = 72 * u;
-    const rays = style === 'circle';
-    const ring = (A) => (rays ? A * 1.44 + 44 * u : A);
-    const fromRing = (R) => Math.max(40 * u, rays ? (R - 44 * u) / 1.44 : R);
+    const rays = style === 'circle', vinyl = style === 'vinyl';
+    // record / orb ARE the visual: no separate visualizer band (it was ~300 px of empty space)
+    const artOnly = (vinyl || style === 'orb') && layout !== 'minimal';
+    // full drawn size of the art: circle rays reach 0.72·A + 22u out, a record is 1.18·A with its tonearm
+    const ring = (A) => (rays ? A * 1.44 + 44 * u : vinyl ? A * 1.18 : A);
+    const fromRing = (R) => Math.max(40 * u, rays ? (R - 44 * u) / 1.44 : vinyl ? R / 1.18 : R);
     const land = W > H * 1.15;
     const z = (a, b) => [Math.round(a), Math.round(b)];
 
@@ -524,7 +641,7 @@
       const pad = (ring(A) - A) / 2;
       const ax = Math.round(W * 0.06 + pad), ay = Math.round((H - A) / 2);
       const tx = Math.round(ax + A + pad + W * 0.05), tw = Math.round(W - tx - W * 0.06);
-      const gap = H * 0.05, vh = H * 0.22, bh = badge ? BADGE_H + gap * 0.6 : 0;
+      const gap = H * 0.05, vh = artOnly ? 0 : H * 0.22, bh = badge ? BADGE_H + gap * 0.6 : 0;
       const top0 = (H - (bh + TEXT_H + gap + vh + gap + PROG_H)) / 2, top = top0 + bh;
       const titleY = top + TEXT_TOP, vy = top + TEXT_H + gap, py = vy + vh + gap;
       const zones = { art: z(ay - pad, ay + A + pad), text: z(top, top + TEXT_H), vis: z(vy, vy + vh), prog: z(py - 12 * u, py + PROG_H), artX: z(ax - pad, ax + A + pad), colX: z(tx, tx + tw) };
@@ -543,16 +660,18 @@
     const regionTop = tall ? H * (badge ? 0.1 : 0.06) : margin * 0.5, regionBottom = tall ? H * 0.78 : H - margin * 0.5;
     const side = tall ? 0.14 : 0.08; // symmetric inset keeps the centred design and clears the icon column
     const extra = badge ? BADGE_H + gap : 0;
-    const vh = minimal ? H * (land ? 0.3 : 0.24) : H * (H > W * 1.3 ? 0.12 : 0.14);
+    const vh = artOnly ? 0 : minimal ? H * (land ? 0.3 : 0.24) : H * (H > W * 1.3 ? 0.12 : 0.14);
     let A, order;
     if (minimal) {
       A = Math.round(fromRing(vh)); // only drawn for the circle style, inside the visualizer zone
       order = ['vis', 'text', 'prog'];
     } else {
-      const avail = tall ? regionBottom - regionTop - (TEXT_H + vh + PROG_H + 3 * gap) - extra : H - (TEXT_H + vh + PROG_H + 3 * gap + 2 * margin) - extra;
-      const cap = layout === 'top' ? Math.min(W * 0.5, H * 0.28) : Math.min(W * 0.64, H * 0.33);
+      const nGap = artOnly ? 2 : 3;
+      const avail = tall ? regionBottom - regionTop - (TEXT_H + vh + PROG_H + nGap * gap) - extra : H - (TEXT_H + vh + PROG_H + nGap * gap + 2 * margin) - extra;
+      const cap = artOnly ? Math.min(W * 0.7, H * 0.48) : layout === 'top' ? Math.min(W * 0.5, H * 0.28) : Math.min(W * 0.64, H * 0.33);
       A = Math.round(Math.min(cap, fromRing(Math.min(avail, W * 0.84))));
       order = layout === 'top' ? ['text', 'art', 'vis', 'prog'] : ['art', 'text', 'vis', 'prog'];
+      if (artOnly) order = order.filter((k) => k !== 'vis');
     }
     if (badge) order.unshift('badge');
     const size = { badge: BADGE_H, art: ring(A), text: TEXT_H, vis: vh, prog: PROG_H };
@@ -560,6 +679,7 @@
     let y = tall ? regionTop + Math.max(0, (regionBottom - regionTop - total) * 0.45) : Math.max(margin * 0.5, (H - total) * 0.45);
     const zones = {};
     for (const k of order) { zones[k] = z(y, y + size[k]); y += size[k] + gap; }
+    if (!zones.vis) zones.vis = z(zones.prog[0], zones.prog[0]); // art-only: an empty band just above the time bar
     const vy = zones.vis[0];
     const pad = (ring(A) - A) / 2;
     const ay = minimal ? Math.round(vy + vh / 2 - A / 2) : Math.round(zones.art[0] + pad);
@@ -649,7 +769,7 @@
   }
 
   return {
-    audioFade, fadeGain, exportEstimate, friendlyError, FILTERS, applyFilter, avGeometry, trimDrag, findSilences, silenceCuts, removeRanges,
+    audioFade, fadeGain, exportEstimate, friendlyError, FILTERS, applyFilter, avGeometry, trimDrag, findSilences, silenceCuts, removeRanges, envelope, envAt, bassOnsets, punchAt, bassPush, prng, bandGroups,
     formatBytes, formatTime, baseName, detectPlatform,
     isHeic, isHeicBrand, looksLikeAudio, AUDIO_EXT, fitArea,
     exifOrientation, orientationApp1, stripJpegBytes,

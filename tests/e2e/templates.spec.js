@@ -7,7 +7,7 @@ const { fx, probe, hasFfprobe, openTab, renderAndDownload, codecs, NO_AAC, NO_EX
 const TABS = [
   { tab: 'imgvideo', box: '#ivTemplates', canvas: '#ivCanvas', min: 9 },
   { tab: 'textvideo', box: '#tvTemplates', canvas: '#tvCanvas', min: 19 },
-  { tab: 'audiovideo', box: '#avTemplates', canvas: '#avCanvas', min: 23 },
+  { tab: 'audiovideo', box: '#avTemplates', canvas: '#avCanvas', min: 26 },
 ];
 
 /** Cheap fingerprint of a canvas (sampled pixels) to tell two renders apart. */
@@ -346,7 +346,7 @@ test.describe('review regressions', () => {
       Object.defineProperty(window, 'localStorage', { get() { throw new DOMException('blocked', 'SecurityError'); } });
     });
     const errors = await openTab(page, 'audiovideo');
-    await expect(page.locator('#avTemplates [data-tpl]')).toHaveCount(23);
+    await expect(page.locator('#avTemplates [data-tpl]')).toHaveCount(26);
     page.once('dialog', (d) => d.accept('X'));
     await page.click('#avTemplates [data-role=save-template]');
     await expect(page.locator('#toast')).toContainText('Không lưu được');

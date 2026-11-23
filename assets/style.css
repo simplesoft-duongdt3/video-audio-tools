@@ -293,3 +293,5 @@ details.ios-only > summary { cursor: pointer; font-weight: 600; min-height: 44px
   .tpl-picker .chips, .pal-picker .chips { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
   .tpl-picker .chips button, .pal-picker .chips button { flex: 0 0 auto; white-space: nowrap; }
 }
+
+.fx-row label.check { flex: 1 1 200px; }

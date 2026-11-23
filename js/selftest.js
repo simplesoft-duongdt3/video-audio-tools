@@ -116,6 +116,30 @@ const SelfTest = (() => {
       if (ext !== 'mp4' || (Number.isFinite(dur) && Math.abs(dur - 1) > 0.3)) throw new Error(info);
       return info;
     }, 'required'],
+    ['Vẽ được mọi kiểu sóng nhạc (Audio → Video)', async () => {
+      // every style draws something, styles look different from each other, and a frame is fast enough
+      const sig = (c) => {
+        const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+        let h = 0, varied = new Set();
+        for (let i = 0; i < d.length; i += 4 * 61) { h = (h * 31 + d[i] + 3 * d[i + 1] + 7 * d[i + 2]) >>> 0; varied.add(d[i] >> 5 << 6 | d[i + 1] >> 5 << 3 | d[i + 2] >> 5); }
+        return { h, colours: varied.size };
+      };
+      const seen = new Map(), slow = [];
+      let worst = 0;
+      for (const s of AVTest.styles()) {
+        const { canvas, ms } = AVTest.frame(s);
+        const g = sig(canvas);
+        if (g.colours < 4) throw new Error(`kiểu "${s}" vẽ ra gần như trống`);
+        if (s !== 'none' && [...seen.values()].includes(g.h)) throw new Error(`kiểu "${s}" giống hệt kiểu khác`);
+        seen.set(s, g.h);
+        worst = Math.max(worst, ms);
+        if (ms > 60) slow.push(`${s} ${ms.toFixed(0)}ms`);
+      }
+      const n = seen.size;
+      // 360×640 here; a 1080×1920 frame costs ~9× more: > 60 ms here ≈ too slow for smooth export on this device
+      if (slow.length) throw new Error(`${n} kiểu · chậm: ${slow.join(', ')}`);
+      return `${n} kiểu · khung chậm nhất ${worst.toFixed(1)} ms (360×640)`;
+    }, 'optional'],
     ['Chia sẻ file (lưu vào Ảnh / gửi TikTok)', async () => {
       if (!canShareFiles) throw new Error('không có — dùng nút Tải');
       return 'OK';

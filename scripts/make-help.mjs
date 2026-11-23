@@ -218,7 +218,8 @@ async function main() {
   await page.fill('#avSub', '@kenh.cua.ban');
   await page.waitForTimeout(400);
   await scrollTo('#avStyle');
-  await shot('av-style', [['#avStyle', 1], ['#avBgMode', 2]]);
+  await page.check('#avPunch');
+  await shot('av-style', [['#avStyle', 1], ['#avBgMode', 2], ['.fx-row', 3]]);
   await scrollTo('.drop[data-input=avImg]');
   await shot('av-cover', [['.drop[data-input=avImg]', 1], ['#avTrim .trim-wave', 2]]);
 
@@ -396,13 +397,13 @@ function page_(s) {
   <h2>5. Chỉ có nhạc → video</h2>
   <p>Tab <b>🎧 Audio → Video</b>. Biến bài hát, podcast, ghi âm thành video có sóng nhạc chuyển động.</p>
   <h3>Chọn mẫu theo thể loại</h3>
-  <p>Chọn nhóm <span class="n">1</span> rồi chọn mẫu <span class="n">2</span>. Có 23 mẫu theo thể loại:</p>
+  <p>Chọn nhóm <span class="n">1</span> rồi chọn mẫu <span class="n">2</span>. Có 26 mẫu theo thể loại:</p>
   <ul>
     <li><b>Sách &amp; Thơ:</b> Sách nói (bìa sách), Bài học từ sách, Đọc thơ (nền giấy, chữ viết tay).</li>
-    <li><b>Podcast &amp; Radio:</b> Podcast, Podcast sáng, Radio đêm (● ON AIR), Bản tin.</li>
+    <li><b>Podcast &amp; Radio:</b> Podcast, Podcast sáng (dạng tin nhắn thoại), Radio đêm (● ON AIR), Bản tin, Quả cầu.</li>
     <li><b>Chữa lành &amp; Thư giãn:</b> Chữa lành, Ngủ ngon, ASMR — sóng nhạc chuyển động chậm, êm.</li>
     <li><b>Học tập:</b> Lofi học bài, Học tiếng Anh. <b>Kể chuyện:</b> Truyện ma, Bé nghe truyện. <b>Tâm linh:</b> Pháp thoại.</li>
-    <li><b>Âm nhạc:</b> TikTok Neon, Lo-fi, Đĩa than, Karaoke…</li>
+    <li><b>Âm nhạc:</b> Neon, Đường neon, Sàn nhảy (đèn LED), Đĩa than (đĩa quay), Lo-fi, Karaoke…</li>
   </ul>
   ${fig(s['av-template'], 'Nhóm thể loại (1) và mẫu (2)')}
   <p>Gõ <b>Tên bài</b> <span class="n">1</span> và <b>dòng phụ</b> <span class="n">2</span> (ô trống sẽ gợi ý theo thể loại, ví dụ “Chương 1 · Tên tác giả”). <b>Nhãn trên cùng</b> <span class="n">3</span> như “SÁCH NÓI”, “TẬP 12” được điền sẵn theo mẫu — sửa hoặc xoá tuỳ ý.</p>
@@ -411,8 +412,16 @@ function page_(s) {
   <p>Không cần biết mã màu: chọn tâm trạng <span class="n">1</span> (Tối, Sáng &amp; Pastel, Rực rỡ, Lễ hội) rồi chạm vào một <b>bộ màu</b> <span class="n">2</span> như Trà sữa, Bạc hà, Đêm Sài Gòn, Tết… Bộ màu chỉ đổi màu, giữ nguyên kiểu của mẫu, và luôn đảm bảo chữ dễ đọc. Muốn tự chọn mã màu thì mở <b>Tự chọn mã màu</b>.</p>
   ${fig(s['av-colors'], 'Tâm trạng (1) và bộ màu (2)')}
   <h3>Sóng nhạc, nền, ảnh bìa, đoạn nhạc</h3>
-  <p>Đổi <b>kiểu sóng nhạc</b> <span class="n">1</span> và kiểu <b>nền</b> <span class="n">2</span> (chuyển màu, một màu, hoặc ảnh bìa làm nền mờ) nếu muốn.</p>
-  ${fig(s['av-style'], 'Kiểu sóng nhạc (1) và nền (2)')}
+  <p>Đổi <b>kiểu sóng nhạc</b> <span class="n">1</span> — có 12 kiểu, gồm các kiểu đang thịnh hành:</p>
+  <ul>
+    <li><b>Đường neon</b> (đường phát sáng), <b>Đèn LED</b> (lưới đèn kiểu dàn âm thanh), <b>Cột phổ</b> / <b>Cột đối xứng</b> — hợp nhạc sôi động.</li>
+    <li><b>Đĩa quay</b> — đĩa than quay, ảnh bìa nằm giữa đĩa. <b>Vòng tròn</b> — tia sáng quanh ảnh bìa.</li>
+    <li><b>Tin nhắn thoại</b> — các vạch như tin nhắn giọng nói, hợp podcast, sách nói, bài giảng.</li>
+    <li><b>Sóng mềm nhiều lớp</b> và <b>Quả cầu</b> — chuyển động êm, hợp chữa lành, thiền, ASMR.</li>
+    <li><b>Sóng âm</b>, <b>Dạng sóng cả bài</b> (sóng của cả bài, tô màu dần khi phát).</li>
+  </ul>
+  <p>Chọn kiểu <b>nền</b> <span class="n">2</span> (chuyển màu, một màu, hoặc ảnh bìa làm nền mờ). Bật <b>hiệu ứng theo nhịp</b> <span class="n">3</span>: <b>✨ Hạt bụi bay theo nhịp</b> và <b>💥 Nhún theo nhịp trống</b> (ảnh bìa / đĩa nhún nhẹ mỗi khi có tiếng trống). Hiệu ứng chỉ chuyển động, <b>không nhấp nháy</b> — an toàn cho người nhạy cảm với ánh sáng.</p>
+  ${fig(s['av-style'], 'Kiểu sóng nhạc (1), nền (2), hiệu ứng theo nhịp (3)')}
   <p>Thêm <b>ảnh bìa</b> <span class="n">1</span> (không bắt buộc — mẫu Sách nói hiện ảnh thành bìa sách). Chọn <b>đoạn nhạc</b> <span class="n">2</span> — bài dài trên 5 phút nên chọn đoạn ngắn để iPhone không bị thiếu bộ nhớ.</p>
   ${fig(s['av-cover'], 'Ảnh bìa (1) và đoạn nhạc (2)')}
   <h3>Bỏ đoạn im lặng thừa (ghi âm, podcast, bài giảng)</h3>

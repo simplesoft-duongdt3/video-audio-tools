@@ -18,19 +18,41 @@
   });
   const FFT = 2048;
 
+  /*
+   * Envelope + beats of the chosen clip, computed ONCE per (song, start, length) — not on every keystroke
+   * (QC: 113–296 ms lag per key on a 3-min song). The envelope starts 3.2 s early so "Tin nhắn thoại"
+   * has a history from the first frame.
+   */
+  const HISTORY = 3.2;
+  let beatCache = { key: null };
+  function beatAnalysis(o) {
+    const sr = audio.sampleRate, key = [audio.length, sr, o.start, o.duration].join('|');
+    if (beatCache.key === key && beatCache.buf === audio) return beatCache;
+    const a = Math.floor(o.start * sr), len = Math.max(1, Math.min(channels[0].length - a, Math.ceil(o.duration * sr)));
+    const h0 = Math.max(0, a - Math.round(HISTORY * sr));
+    beatCache = {
+      key, buf: audio,
+      env: Core.envelope(channels, sr, h0, a - h0 + len, 50), envOffset: (a - h0) / sr,
+      onsets: Core.bassOnsets(channels, sr, a, len),
+    };
+    return beatCache;
+  }
+
   /* ---------------- templates ---------------- */
   /** Look = what a template sets that has no control: fonts, text colour, background gradient, layout. */
   const DEFAULT_LOOK = { font: 'Be Vietnam Pro', weight: 800, italic: false, ink: '#ffffff', dim: 'rgba(255,255,255,0.28)', stops: ['#1b1036', '#07070c'], angle: 72, layout: 'cover', glow: true };
   // set: control values (the user can still change them) · look: what has no control.
   // Genre templates follow the research in the commit message (palettes / fonts / motion per genre, VN market).
-  const T = (id, name, cat, set, look) => ({ id, name, cat, set: { avBadge: '', ...set }, style: look });
+  const T = (id, name, cat, set, look) => ({ id, name, cat, set: { avBadge: '', avDust: false, avPunch: false, ...set }, style: look });
   const MUSIC = 'Âm nhạc', BOOK = 'Sách & Thơ', TALK = 'Podcast & Radio', CALM = 'Chữa lành & Thư giãn', LEARN = 'Học tập', STORY = 'Kể chuyện', FAITH = 'Tâm linh';
   const G = (avStyle, avColor1, avColor2, bg) => ({ avStyle, avColor1, avColor2, ...(bg.startsWith('#') ? { avBgMode: 'color', avBgColor: bg } : { avBgMode: 'gradient' }) });
   const AV_TEMPLATES = [
     // music
-    T('neon', 'Neon', MUSIC, G('bars', '#25f4ee', '#fe2c55', 'g'), {}),
-    T('lofi', 'Lo-fi', MUSIC, G('mirror', '#c084fc', '#f9a8d4', 'g'), { stops: ['#2e1065', '#831843'], angle: 120 }),
-    T('vinyl', 'Đĩa than', MUSIC, G('circle', '#fde68a', '#f59e0b', 'g'), { font: 'Playfair Display', weight: 700, italic: true, stops: ['#292524', '#0c0a09'] }),
+    T('neon', 'Neon', MUSIC, { ...G('bars', '#25f4ee', '#fe2c55', 'g'), avPunch: true }, {}),
+    T('duongneon', 'Đường neon', MUSIC, { ...G('line', '#a3e635', '#22d3ee', 'g'), avPunch: true }, { font: 'Montserrat', weight: 900, stops: ['#0a0f1f', '#020409'], angle: 180, layout: 'minimal' }),
+    T('sannhay', 'Sàn nhảy', MUSIC, { ...G('led', '#22d3ee', '#e879f9', 'g'), avPunch: true, avDust: true }, { font: 'Montserrat', weight: 900, stops: ['#140b2e', '#000000'], angle: 180, layout: 'minimal' }),
+    T('lofi', 'Lo-fi', MUSIC, { ...G('mirror', '#c084fc', '#f9a8d4', 'g'), avDust: true }, { stops: ['#2e1065', '#831843'], angle: 120 }),
+    T('vinyl', 'Đĩa than', MUSIC, G('vinyl', '#fde68a', '#f59e0b', 'g'), { font: 'Playfair Display', weight: 700, italic: true, stops: ['#292524', '#0c0a09'] }),
     T('ocean', 'Biển xanh', MUSIC, G('wave', '#67e8f9', '#3b82f6', 'g'), { stops: ['#0c4a6e', '#082f49'], angle: 100, layout: 'minimal' }),
     T('sunset', 'Hoàng hôn', MUSIC, G('bars', '#fde047', '#fb7185', 'g'), { font: 'Playfair Display', weight: 700, italic: true, stops: ['#9a3412', '#4c0519'], angle: 90 }),
     T('karaoke', 'Karaoke', MUSIC, G('overview', '#fe2c55', '#25f4ee', 'g'), { font: 'Montserrat', weight: 900, stops: ['#18181b', '#000000'], layout: 'minimal' }),
@@ -40,21 +62,22 @@
     T('tuduy', 'Bài học từ sách', BOOK, { ...G('overview', '#facc15', '#a3a3a3', '#111111'), avBadge: 'Bài học từ sách' }, { font: 'Montserrat', weight: 900, ink: '#ffffff', dim: 'rgba(255,255,255,0.2)', layout: 'minimal', glow: false, subHint: 'Bài học từ “Tên sách” · @kenh' }),
     T('doctho', 'Đọc thơ', BOOK, G('wave', '#8b6b4a', '#b08d57', '#f3ead8'), { font: 'Dancing Script', weight: 700, titleScale: 1.3, ink: '#3b2f2f', dim: 'rgba(59,47,47,0.18)', layout: 'minimal', glow: false, texture: 'paper', motion: 'calm', subHint: 'Thơ · Tên tác giả' }),
     // podcast & radio
-    T('podcast', 'Podcast', TALK, G('wave', '#fbbf24', '#f97316', 'g'), { font: 'Montserrat', weight: 900, stops: ['#111827', '#030712'], layout: 'top', subHint: 'Tập 1 · @kenh', glyph: '🎙' }),
-    T('podsang', 'Podcast sáng', TALK, { ...G('bars', '#dc2626', '#d97706', '#fff4e0'), avBadge: 'Podcast · Tập 12' }, { font: 'Montserrat', weight: 900, ink: '#1f1a17', dim: 'rgba(31,26,23,0.16)', layout: 'top', glow: false, artShape: 'rounded', subHint: 'Tập 12 · Khách mời: Tên', glyph: '🎙' }),
+    T('podcast', 'Podcast', TALK, G('capsules', '#fbbf24', '#f97316', 'g'), { font: 'Montserrat', weight: 900, stops: ['#111827', '#030712'], layout: 'top', subHint: 'Tập 1 · @kenh', glyph: '🎙' }),
+    T('podsang', 'Podcast sáng', TALK, { ...G('capsules', '#dc2626', '#d97706', '#fff4e0'), avBadge: 'Podcast · Tập 12' }, { font: 'Montserrat', weight: 900, ink: '#1f1a17', dim: 'rgba(31,26,23,0.16)', layout: 'top', glow: false, artShape: 'rounded', subHint: 'Tập 12 · Khách mời: Tên', glyph: '🎙' }),
     T('radiodem', 'Radio đêm', TALK, { ...G('mirror', '#fcd34d', '#f59e0b', 'g'), avBadge: 'On air' }, { font: 'Playfair Display', weight: 700, italic: true, ink: '#fdf6e3', dim: 'rgba(253,246,227,0.2)', stops: ['#14213d', '#05070f'], angle: 180, layout: 'top', badgeDot: true, motion: 'calm', subHint: 'Radio tâm sự · Đêm thứ 12', glyph: '📻' }),
     T('bantin', 'Bản tin', TALK, { ...G('bars', '#ef4444', '#ffffff', 'g'), avBadge: 'Bản tin' }, { font: 'Be Vietnam Pro', weight: 800, ink: '#ffffff', stops: ['#0b2a5b', '#061430'], angle: 180, layout: 'top', glow: false, badgeDot: true, subHint: 'Bản tin sáng · @kenh', glyph: '📰' }),
+    T('quacau', 'Quả cầu', TALK, G('orb', '#60a5fa', '#c084fc', 'g'), { font: 'Montserrat', weight: 800, stops: ['#0f172a', '#020617'], angle: 180, subHint: 'Trò chuyện cùng @kenh', glyph: '🎙' }),
     T('paper', 'Tối giản sáng', TALK, G('overview', '#111111', '#555555', '#f4f1ea'), { ink: '#111111', dim: 'rgba(0,0,0,0.16)', glow: false, layout: 'minimal' }),
     // calm
-    T('chualanh', 'Chữa lành', CALM, G('wave', '#9d5c7a', '#6d5fa8', 'g'), { font: 'Be Vietnam Pro', weight: 600, ink: '#3b3355', dim: 'rgba(59,51,85,0.18)', stops: ['#f8e1e7', '#e7e3f4'], angle: 160, layout: 'minimal', glow: false, texture: 'grain', motion: 'calm', subHint: 'Gửi bạn, người đang mệt · @kenh' }),
-    T('ngungon', 'Ngủ ngon', CALM, G('wave', '#a5b4fc', '#818cf8', 'g'), { font: 'Be Vietnam Pro', weight: 600, ink: '#cbd5e1', dim: 'rgba(203,213,225,0.15)', stops: ['#1b2838', '#0a1220'], angle: 180, layout: 'minimal', motion: 'calm', subHint: 'Tiếng mưa · 60 phút' }),
-    T('asmr', 'ASMR', CALM, G('mirror', '#f9a8d4', '#c4b5fd', 'g'), { font: 'Montserrat', weight: 700, ink: '#fff1f2', dim: 'rgba(255,241,242,0.2)', stops: ['#3a2233', '#140b12'], angle: 160, layout: 'minimal', motion: 'calm', subHint: 'Thì thầm · Tiếng gõ nhẹ' }),
+    T('chualanh', 'Chữa lành', CALM, G('layers', '#9d5c7a', '#6d5fa8', 'g'), { font: 'Be Vietnam Pro', weight: 600, ink: '#3b3355', dim: 'rgba(59,51,85,0.18)', stops: ['#f8e1e7', '#e7e3f4'], angle: 160, layout: 'minimal', glow: false, texture: 'grain', motion: 'calm', subHint: 'Gửi bạn, người đang mệt · @kenh' }),
+    T('ngungon', 'Ngủ ngon', CALM, { ...G('layers', '#a5b4fc', '#818cf8', 'g'), avDust: true }, { font: 'Be Vietnam Pro', weight: 600, ink: '#cbd5e1', dim: 'rgba(203,213,225,0.15)', stops: ['#1b2838', '#0a1220'], angle: 180, layout: 'minimal', motion: 'calm', subHint: 'Tiếng mưa · 60 phút' }),
+    T('asmr', 'ASMR', CALM, G('orb', '#f9a8d4', '#c4b5fd', 'g'), { font: 'Montserrat', weight: 700, ink: '#fff1f2', dim: 'rgba(255,241,242,0.2)', stops: ['#3a2233', '#140b12'], angle: 160, layout: 'minimal', motion: 'calm', subHint: 'Thì thầm · Tiếng gõ nhẹ' }),
     // learning
-    T('lofihoc', 'Lofi học bài', LEARN, G('mirror', '#fcd9b8', '#c9a7eb', 'g'), { font: 'Roboto Mono', weight: 700, ink: '#fff4e6', dim: 'rgba(255,244,230,0.22)', stops: ['#3d2c4f', '#1f2a44'], angle: 150, artShape: 'rounded', texture: 'grain', motion: 'calm', subHint: 'Học cùng mình · 25 phút', glyph: '📚' }),
+    T('lofihoc', 'Lofi học bài', LEARN, { ...G('mirror', '#fcd9b8', '#c9a7eb', 'g'), avDust: true }, { font: 'Roboto Mono', weight: 700, ink: '#fff4e6', dim: 'rgba(255,244,230,0.22)', stops: ['#3d2c4f', '#1f2a44'], angle: 150, artShape: 'rounded', texture: 'grain', motion: 'calm', subHint: 'Học cùng mình · 25 phút', glyph: '📚' }),
     T('tienganh', 'Học tiếng Anh', LEARN, { ...G('overview', '#facc15', '#38bdf8', '#0f172a'), avBadge: 'Bài 3' }, { font: 'Montserrat', weight: 900, ink: '#f8fafc', dim: 'rgba(248,250,252,0.18)', layout: 'top', glow: false, artShape: 'rounded', subHint: 'Bài 3 · Giao tiếp hằng ngày', glyph: '🔤' }),
     // stories
-    T('truyenma', 'Truyện ma', STORY, { ...G('wave', '#dc2626', '#7f1d1d', 'g'), avBadge: 'Truyện ma' }, { font: 'Noto Serif', weight: 800, ink: '#e7e5e4', dim: 'rgba(220,38,38,0.2)', stops: ['#1c0606', '#000000'], angle: 180, layout: 'minimal', badgeColor: '#f87171', texture: 'grain+vignette', motion: 'calm', subHint: 'Phần 1 · Kể bởi @kenh' }),
-    T('bekechuyen', 'Bé nghe truyện', STORY, { ...G('bars', '#ea580c', '#db2777', 'g'), avBadge: 'Bé nghe truyện' }, { font: 'Baloo 2', weight: 800, ink: '#3b2a7a', dim: 'rgba(59,42,122,0.18)', stops: ['#fff7d6', '#ffe1c7'], angle: 135, glow: false, artShape: 'rounded', subHint: 'Truyện cổ tích · Sọ Dừa', glyph: '🧸' }),
+    T('truyenma', 'Truyện ma', STORY, { ...G('wave', '#dc2626', '#7f1d1d', 'g'), avBadge: 'Truyện ma' }, { font: 'Noto Serif', weight: 800, ink: '#e7e5e4', dim: 'rgba(220,38,38,0.2)', stops: ['#1c0606', '#000000'], angle: 180, layout: 'minimal', badgeColor: '#f87171', texture: 'grain+vignette', motion: 'calm', noPunch: true, subHint: 'Phần 1 · Kể bởi @kenh' }),
+    T('bekechuyen', 'Bé nghe truyện', STORY, { ...G('led', '#ea580c', '#db2777', 'g'), avBadge: 'Bé nghe truyện' }, { font: 'Baloo 2', weight: 800, ink: '#3b2a7a', dim: 'rgba(59,42,122,0.18)', stops: ['#fff7d6', '#ffe1c7'], angle: 135, glow: false, artShape: 'rounded', subHint: 'Truyện cổ tích · Sọ Dừa', glyph: '🧸' }),
     // faith
     T('phatphap', 'Pháp thoại', FAITH, { ...G('overview', '#f5c26b', '#b45309', 'g'), avBadge: 'Pháp thoại' }, { font: 'Noto Serif', weight: 600, ink: '#fbe9c6', dim: 'rgba(251,233,198,0.2)', stops: ['#4a2c12', '#1f1206'], angle: 180, artShape: 'circle', motion: 'calm', subHint: 'Pháp thoại · Tên giảng sư', glyph: '🪷' }),
   ];
@@ -73,6 +96,8 @@
       title: $('avTitle').value.trim() || (audioFile ? baseName(audioFile) : 'Tên bài hát'),
       sub: $('avSub').value.trim(), // the genre's suggestion is only a placeholder: never burned into the video
       badge: $('avBadge').value.trim(),
+      dust: $('avDust').checked,
+      punch: $('avPunch').checked,
       style: $('avStyle').value,
       c1: $('avColor1').value, c2: $('avColor2').value,
       bgMode: $('avBgMode').value, bgColor: $('avBgColor').value,
@@ -100,7 +125,16 @@
     const win = new Float32Array(FFT);
     let prev = null, lastT = -1, prevWave = null, lastWaveT = -1;
     let overview = null;
+    let B = null;
+    const demoOnsets = Array.from({ length: 1200 }, (_, k) => ({ t: k * 0.5, s: 0.8 })); // preview without a song
+    const ensure = () => { if (!B && channels) B = beatAnalysis(o); };
+    const tau = (o.look || DEFAULT_LOOK).motion === 'calm' ? 0.35 : 0.15;
     return {
+      /** loudness 0..1 at clip time t (whole-clip envelope: works for any t, e.g. a rolling history) */
+      env(t) { if (!channels) return 0.45 + 0.35 * Math.sin(t * 2.3) * Math.sin(t * 0.7 + 1); ensure(); const x = t + B.envOffset; return x < 0 ? 0 : Core.envAt(B.env, x); },
+      /** beat "punch" 0..1 and cumulative bass push — pure functions of t (preview = export, seekable) */
+      punch(t) { if (!channels) return Core.punchAt(demoOnsets, t, tau); ensure(); return Core.punchAt(B.onsets, t, tau); },
+      push(t) { if (!channels) return Core.bassPush(demoOnsets, t); ensure(); return Core.bassPush(B.onsets, t); },
       /** {bands, wave, level} for clip time t (seconds from the clip start). */
       at(t, nBands) {
         if (!channels) {
@@ -478,9 +512,239 @@
     ctx.restore();
   }
 
+  /* ---------------- trending styles (research: Kapwing / VEED / Videobolt / Renderforest catalogues) ---------------- */
+  const mix = (a, b, f) => {
+    const x = parseInt(a.slice(1), 16), y = parseInt(b.slice(1), 16);
+    const ch = (s) => Math.round(((x >> s) & 255) * (1 - f) + ((y >> s) & 255) * f);
+    return `rgb(${ch(16)},${ch(8)},${ch(0)})`;
+  };
+  const isLight = (o) => Core.luminance((o.look || DEFAULT_LOOK).ink) < 0.3; // dark text ⇒ light background
+  /** Smooth open path through points (quadratic curves via midpoints). */
+  function smoothPath(ctx, pts, close) {
+    ctx.beginPath();
+    const n = pts.length;
+    if (close) {
+      const m0 = [(pts[n - 1][0] + pts[0][0]) / 2, (pts[n - 1][1] + pts[0][1]) / 2];
+      ctx.moveTo(m0[0], m0[1]);
+      for (let i = 0; i < n; i++) { const p = pts[i], q = pts[(i + 1) % n]; ctx.quadraticCurveTo(p[0], p[1], (p[0] + q[0]) / 2, (p[1] + q[1]) / 2); }
+      ctx.closePath();
+      return;
+    }
+    ctx.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < n - 1; i++) ctx.quadraticCurveTo(pts[i][0], pts[i][1], (pts[i][0] + pts[i + 1][0]) / 2, (pts[i][1] + pts[i + 1][1]) / 2);
+    ctx.lineTo(pts[n - 1][0], pts[n - 1][1]);
+  }
+
+  /** "Đường neon": glowing curve through the band tops, soft fill under it. Glow = a wide faint stroke (no blur). */
+  function drawLine(ctx, o, g, bands) {
+    const n = bands.length, u = g.u;
+    const pts = [];
+    const ins = 15 * u, x0 = g.vx + ins, w = g.vw - 2 * ins; // the 30u glow stays inside the safe width
+    for (let i = 0; i < n; i++) {
+      const v = (bands[Math.max(0, i - 1)] + 2 * bands[i] + bands[Math.min(n - 1, i + 1)]) / 4;
+      pts.push([x0 + (i / (n - 1)) * w, g.vy + g.vh - v * g.vh * 0.9]);
+    }
+    ctx.save();
+    smoothPath(ctx, pts);
+    ctx.lineTo(x0 + w, g.vy + g.vh);
+    ctx.lineTo(x0, g.vy + g.vh);
+    ctx.closePath();
+    const fg = ctx.createLinearGradient(0, g.vy, 0, g.vy + g.vh);
+    fg.addColorStop(0, hexA(o.c1, 0.35)); fg.addColorStop(1, hexA(o.c1, 0));
+    ctx.fillStyle = fg;
+    ctx.fill();
+    smoothPath(ctx, pts);
+    ctx.lineJoin = ctx.lineCap = 'round';
+    ctx.strokeStyle = hexA(o.c1, 0.18);
+    ctx.lineWidth = 30 * u;
+    ctx.stroke();
+    ctx.strokeStyle = grad(ctx, o, g.vx, g.vx + g.vw);
+    ctx.lineWidth = Math.max(2, 5 * u);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /** "Tin nhắn thoại": a rolling loudness history in rounded capsules (newest on the right), like a voice note. */
+  function drawCapsules(ctx, o, g, an, t) {
+    const N = o.W > o.H ? 44 : 32, step = g.vw / N, w = step * 0.55, mid = g.vy + g.vh / 2, minH = 8 * g.u;
+    const L = o.look || DEFAULT_LOOK;
+    ctx.save();
+    for (let k = 0; k < N; k++) {
+      const h = Math.max(minH, an.env(t - (N - 1 - k) * 0.1) * g.vh);
+      ctx.fillStyle = k < N * 0.25 ? L.dim : mix(o.c1, o.c2, k / (N - 1));
+      roundRect(ctx, g.vx + k * step + (step - w) / 2, mid - h / 2, w, h, w / 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  /** "Sóng mềm": 4 soft sine lines, each driven by a frequency group, tapered at the ends. */
+  function drawLayers(ctx, o, g, bands, t, st) {
+    const gr = Core.bandGroups(bands, 4), alpha = (o.look || DEFAULT_LOOK).motion === 'calm' ? 0.08 : 0.15;
+    st.amp = st.amp && t - st.t < 0.25 ? st.amp.map((a, j) => a + alpha * (gr[j] - a)) : Array.from(gr);
+    st.t = t;
+    const K = [1.2, 1.7, 2.1, 2.6], W_ = [0.8, 1.3, 1.7, 2.0], PH = [0, 1.3, 2.6, 3.9];
+    const mid = g.vy + g.vh / 2, light = isLight(o);
+    ctx.save();
+    ctx.lineWidth = Math.max(2, 4 * g.u);
+    ctx.lineCap = 'round';
+    if (light) ctx.globalAlpha = 0.75; else ctx.globalCompositeOperation = 'lighter';
+    for (let j = 3; j >= 0; j--) {
+      const a = (0.15 + st.amp[j]) * (g.vh / 2) * 0.85;
+      ctx.strokeStyle = mix(o.c1, o.c2, j / 3);
+      ctx.beginPath();
+      for (let i = 0; i <= 128; i++) {
+        const xn = i / 128, xh = xn * 2 - 1, att = (1 - xh * xh) ** 2;
+        const y = mid + a * att * Math.sin(K[j] * xn * 2 * Math.PI + PH[j] + W_[j] * t);
+        const x = g.vx + xn * g.vw;
+        i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  /** "Quả cầu": a liquid blob morphing with 6 frequency groups (mirrored → symmetric), soft glow sprite. */
+  function drawOrb(ctx, o, g, bands, level, t, st, im) {
+    const gr = Core.bandGroups(bands, 6);
+    st.orb = st.orb && t - st.ot < 0.25 ? st.orb.map((a, j) => a + 0.12 * (gr[j] - a)) : Array.from(gr);
+    st.ot = t;
+    const cx = g.ax + g.A / 2, cy = g.ay + g.A / 2, R = g.A * 0.34;
+    if (!st.glow || st.glowR !== R) {
+      const s = Math.ceil(R * 3);
+      st.glow = makeCanvas(s, s); st.glowR = R;
+      const x = st.glow.getContext('2d'), rg = x.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
+      rg.addColorStop(0, hexA(o.c2, 0.35)); rg.addColorStop(1, hexA(o.c2, 0));
+      x.fillStyle = rg; x.fillRect(0, 0, s, s);
+    }
+    const gs = st.glow.width * (1 + 0.08 * level);
+    ctx.drawImage(st.glow, cx - gs / 2, cy - gs / 2, gs, gs);
+    const pts = [];
+    for (let k = 0; k < 12; k++) {
+      const gk = st.orb[k < 6 ? k : 11 - k];
+      const r = R * (1 + 0.18 * gk + 0.04 * Math.sin(t * 0.7 + k * 1.9));
+      const a = (k / 12) * Math.PI * 2 - Math.PI / 2;
+      pts.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]);
+    }
+    const fill = ctx.createRadialGradient(cx - R * 0.35, cy - R * 0.35, R * 0.1, cx, cy, R * 1.25);
+    fill.addColorStop(0, o.c2); fill.addColorStop(1, o.c1);
+    ctx.save();
+    smoothPath(ctx, pts, true);
+    if (im) {
+      // a chosen cover lives INSIDE the orb (it used to be hidden), tinted by the template colours
+      ctx.clip();
+      drawImageFit(ctx, im.img, im.w, im.h, cx - R * 1.3, cy - R * 1.3, R * 2.6, R * 2.6, 'cover');
+      ctx.globalAlpha = 0.35;
+    }
+    ctx.fillStyle = fill;
+    ctx.fill();
+    ctx.restore();
+  }
+
+  /** "Đèn LED": 16 × 12 dot-matrix equalizer with falling peak dots. One path per row (fast). */
+  function drawLED(ctx, o, g, bands, t, st) {
+    const C = 16, R = 12, gr = Core.bandGroups(bands, C), L = o.look || DEFAULT_LOOK;
+    const cw = g.vw / C, ch = g.vh / R, pw = cw * 0.78, ph = ch * 0.72, r = Math.min(pw, ph) * 0.3;
+    if (!st.peak || t < st.lt || t - st.lt > 0.25) { st.peak = new Array(C).fill(0); st.pt = new Array(C).fill(t); st.lt = t; }
+    const dt = t - st.lt; st.lt = t;
+    const lit = gr.map((v) => Math.round(Math.min(1, v) * R));
+    for (let c = 0; c < C; c++) {
+      if (lit[c] >= st.peak[c]) { st.peak[c] = lit[c]; st.pt[c] = t; } else if (t - st.pt[c] > 0.4) st.peak[c] = Math.max(lit[c], st.peak[c] - 1.2 * dt * R / 4);
+    }
+    const cell = (c, row) => roundRect(ctx, g.vx + c * cw + (cw - pw) / 2, g.vy + g.vh - (row + 1) * ch + (ch - ph) / 2, pw, ph, r);
+    ctx.save();
+    ctx.fillStyle = L.dim;
+    ctx.beginPath();
+    for (let row = 0; row < R; row++) for (let c = 0; c < C; c++) if (row >= lit[c]) { cell(c, row); ctx.fill(); }
+    for (let row = 0; row < R; row++) {
+      ctx.fillStyle = mix(o.c1, o.c2, row / (R - 1));
+      for (let c = 0; c < C; c++) if (row < lit[c]) { cell(c, row); ctx.fill(); }
+    }
+    ctx.fillStyle = L.ink;
+    for (let c = 0; c < C; c++) { const pk = Math.round(st.peak[c]); if (pk > lit[c] && pk > 0) { cell(c, pk - 1); ctx.fill(); } }
+    ctx.restore();
+  }
+
+  /** "Đĩa quay": a spinning record (33⅓ rpm) with the cover as its label, a still sheen and a tonearm. */
+  function drawVinyl(ctx, o, g, im, t, st, punch) {
+    const A = g.A, cx = g.ax + A / 2, cy = g.ay + A / 2, S = Math.round(A * 1.08), u = g.u;
+    if (!st.disc) {
+      st.disc = makeCanvas(S, S);
+      const x = st.disc.getContext('2d'), c = S / 2;
+      x.fillStyle = '#111';
+      x.beginPath(); x.arc(c, c, c, 0, Math.PI * 2); x.fill();
+      x.strokeStyle = 'rgba(255,255,255,0.06)';
+      x.lineWidth = Math.max(1, 1.5 * u);
+      for (let i = 0; i < 20; i++) { x.beginPath(); x.arc(c, c, c * (0.42 + i * 0.027), 0, Math.PI * 2); x.stroke(); }
+      const lr = A * 0.19;
+      x.save();
+      x.beginPath(); x.arc(c, c, lr, 0, Math.PI * 2); x.clip();
+      if (im) drawImageFit(x, im.img, im.w, im.h, c - lr, c - lr, lr * 2, lr * 2, 'cover');
+      else { const lg = x.createLinearGradient(c - lr, c - lr, c + lr, c + lr); lg.addColorStop(0, o.c1); lg.addColorStop(1, o.c2); x.fillStyle = lg; x.fillRect(c - lr, c - lr, lr * 2, lr * 2); }
+      x.restore();
+      x.fillStyle = '#000';
+      x.beginPath(); x.arc(c, c, A * 0.014, 0, Math.PI * 2); x.fill();
+    }
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.scale(punch, punch);
+    ctx.save();
+    ctx.rotate(3.49 * t); // 33⅓ rpm
+    ctx.drawImage(st.disc, -S / 2, -S / 2);
+    ctx.restore();
+    // sheen stays still while the record turns (looks like a real reflection)
+    const sh = ctx.createLinearGradient(-S / 2, -S / 2, S / 2, S / 2);
+    sh.addColorStop(0.3, 'rgba(255,255,255,0)'); sh.addColorStop(0.5, 'rgba(255,255,255,0.07)'); sh.addColorStop(0.7, 'rgba(255,255,255,0)');
+    ctx.fillStyle = sh;
+    ctx.beginPath(); ctx.arc(0, 0, S / 2, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    // tonearm (wobbles a hair on beats)
+    const px = cx + A * 0.52, py = cy - A * 0.5, ang = ((0.6 * (punch - 1)) / 0.035) * (Math.PI / 180);
+    ctx.save();
+    ctx.translate(px, py);
+    ctx.rotate(ang);
+    ctx.strokeStyle = hexA((o.look || DEFAULT_LOOK).ink, 0.85);
+    ctx.lineWidth = Math.max(3, 9 * u);
+    ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-A * 0.05, A * 0.42); ctx.lineTo(-A * 0.2, A * 0.55); ctx.stroke();
+    ctx.fillStyle = hexA((o.look || DEFAULT_LOOK).ink, 0.85);
+    ctx.beginPath(); ctx.arc(0, 0, 18 * u, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+
+  /** "Hạt bụi": 90 seeded particles drifting faster after bass hits. Constant alpha: motion only, never flashes. */
+  function drawDust(ctx, o, g, an, t, st) {
+    const u = g.u, tall = o.H > o.W * 1.6;
+    if (!st.parts) {
+      const rnd = Core.prng(20261123);
+      st.parts = Array.from({ length: 90 }, () => ({ x: rnd(), y: rnd(), s: 2 + rnd() * 4, a: rnd() * Math.PI * 2, v: 0.01 + rnd() * 0.03 }));
+      const d = Math.ceil(16 * u);
+      st.dot = makeCanvas(d * 2, d * 2);
+      const x = st.dot.getContext('2d'), rg = x.createRadialGradient(d, d, 0, d, d, d);
+      rg.addColorStop(0, hexA((o.look || DEFAULT_LOOK).ink, 0.9)); rg.addColorStop(1, hexA((o.look || DEFAULT_LOOK).ink, 0));
+      x.fillStyle = rg; x.fillRect(0, 0, d * 2, d * 2);
+    }
+    const y0 = tall ? 0.06 : 0, y1 = tall ? 0.78 : 1, T = t + 0.6 * an.push(t);
+    ctx.save();
+    ctx.globalAlpha = 0.5;
+    for (const p of st.parts) {
+      const fx = (((p.x + Math.cos(p.a) * p.v * T) % 1) + 1) % 1;
+      const fy = (((p.y + Math.sin(p.a) * p.v * T - 0.02 * T) % 1) + 1) % 1;
+      const r = p.s * u * 3;
+      ctx.drawImage(st.dot, fx * o.W - r, (y0 + fy * (y1 - y0)) * o.H - r, r * 2, r * 2);
+    }
+    ctx.restore();
+  }
+
   function makeDraw(o, im) {
     const g = geometry(o.W, o.H, (o.look || DEFAULT_LOOK).layout, o.style, { badge: !!o.badge, titleScale: (o.look || DEFAULT_LOOK).titleScale || 1 });
-    const showArt = !g.noArt || o.style === 'circle';
+    const own = o.style === 'vinyl' || o.style === 'orb'; // these draw their own centre piece instead of the cover
+    const showArt = (!g.noArt || o.style === 'circle') && !own;
+    const L = o.look || DEFAULT_LOOK;
+    // beat effects: geometry only (no brightness change, no shake); a red horror look never "punches"
+    const punchOn = !!o.punch && !L.noPunch, punchAmt = L.motion === 'calm' ? 0.015 : 0.035;
+    const st = {}; // per-scene state of the smoothed styles (frames are drawn in order)
+    let artSprite = null;
     const an = makeAnalyzer(o);
     const nBands = o.W > o.H ? 56 : 40;
     // Everything that never moves (background, blur, cover art, title) is drawn ONCE into this layer;
@@ -500,15 +764,35 @@
         c.fillStyle = sg;
         c.fillRect(g.align === 'left' ? g.tx - pad : 0, z[0] - pad * 2, g.align === 'left' ? g.tw + pad * 2 : o.W, z[1] - z[0] + pad * 4);
       }
-      if (im && showArt) drawArt(c, o, g, im, 0, o.style === 'circle' || !!g.noArt);
+      if (im && showArt && !punchOn) drawArt(c, o, g, im, 0, o.style === 'circle' || !!g.noArt);
       drawText(c, o, g);
       return still;
     };
     return (ctx, t) => {
-      const { bands, wave, level } = an.at(t, o.style === 'circle' ? 48 : nBands);
+      const { bands, wave, level } = an.at(t, o.style === 'circle' ? 48 : o.style === 'line' ? 32 : nBands);
       ctx.drawImage(stillLayer(), 0, 0);
-      if (!im && showArt) drawArt(ctx, o, g, null, level, o.style === 'circle'); // the pulsing disc moves with the music
-      if (o.style === 'circle') drawCircle(ctx, o, g, bands);
+      if (o.dust) drawDust(ctx, o, g, an, t, st);
+      const k = punchOn ? 1 + punchAmt * an.punch(t) : 1;
+      const cx = g.ax + g.A / 2, cy = g.ay + g.A / 2;
+      const punched = (fn) => { if (k === 1) return fn(); ctx.save(); ctx.translate(cx, cy); ctx.scale(k, k); ctx.translate(-cx, -cy); fn(); ctx.restore(); };
+      if (im && showArt && punchOn) {
+        // the cover bounces with the beat: drawn once into a sprite, scaled each frame
+        if (!artSprite) {
+          const pad = 80 * g.u;
+          artSprite = makeCanvas(g.A + pad * 2, g.A + pad * 2);
+          drawArt(artSprite.getContext('2d'), o, { ...g, ax: pad, ay: pad }, im, 0, o.style === 'circle' || !!g.noArt);
+          artSprite.pad = pad;
+        }
+        punched(() => ctx.drawImage(artSprite, g.ax - artSprite.pad, g.ay - artSprite.pad));
+      }
+      if (!im && showArt) punched(() => drawArt(ctx, o, g, null, level, o.style === 'circle')); // the pulsing disc moves with the music
+      if (o.style === 'circle') punched(() => drawCircle(ctx, o, g, bands));
+      if (o.style === 'vinyl') drawVinyl(ctx, o, g, im, t, st, k);
+      else if (o.style === 'orb') punched(() => drawOrb(ctx, o, g, bands, level, t, st, im));
+      else if (o.style === 'line') drawLine(ctx, o, g, bands);
+      else if (o.style === 'capsules') drawCapsules(ctx, o, g, an, t);
+      else if (o.style === 'layers') drawLayers(ctx, o, g, bands, t, st);
+      else if (o.style === 'led') drawLED(ctx, o, g, bands, t, st);
       if (o.style === 'bars') drawBars(ctx, o, g, bands, false);
       else if (o.style === 'mirror') drawBars(ctx, o, g, bands, true);
       else if (o.style === 'wave') drawWave(ctx, o, g, wave);
@@ -522,6 +806,23 @@
     const o = opts();
     return { width: o.W, height: o.H, fps: o.fps, duration: o.duration, draw: makeDraw(o, art), audio, audioOffset: o.start };
   }
+
+  /**
+   * For the on-device self-test and e2e tests: draw one frame of a visualizer style with a synthetic
+   * "music" signal (no user file needed). → { canvas, ms } (ms = draw time of that frame).
+   */
+  window.AVTest = {
+    styles: () => [...$('avStyle').options].map((x) => x.value),
+    frame(style, { W = 360, H = 640, t = 0.5, layout = 'cover' } = {}) {
+      const o = { ...opts(), W, H, fps: 30, style, duration: 4, start: 0, look: { ...DEFAULT_LOOK, layout }, bgMode: 'gradient', progress: true, badge: '', dust: false, punch: false };
+      const draw = makeDraw(o, null);
+      const c = makeCanvas(W, H), x = c.getContext('2d');
+      draw(x, Math.max(0, t - 1 / 30)); // a previous frame for styles that smooth over time
+      const t0 = performance.now();
+      draw(x, t);
+      return { canvas: c, ms: performance.now() - t0 };
+    },
+  };
 
   async function ensureFonts() {
     try {
@@ -576,8 +877,12 @@
     } catch (e) { toast(e.message); }
   });
 
-  const previewSoon = oncePerFrame(preview);
-  ['avBadge', 'avTitle', 'avSub', 'avStyle', 'avColor1', 'avColor2', 'avBgMode', 'avBgColor', 'avSize', 'avFps', 'avStart', 'avDur', 'avProgress'].forEach((id) =>
+  // a change while "Xem thử" plays used to do nothing until Stop: stop the preview and show the change
+  const previewSoon = oncePerFrame(() => {
+    if (player.playing) { player.stop(); $('avPlay').textContent = '▶ Xem thử'; toast('Đã dừng xem thử để áp dụng thay đổi — bấm Xem thử để nghe lại'); }
+    preview();
+  });
+  ['avDust', 'avPunch', 'avBadge', 'avTitle', 'avSub', 'avStyle', 'avColor1', 'avColor2', 'avBgMode', 'avBgColor', 'avSize', 'avFps', 'avStart', 'avDur', 'avProgress'].forEach((id) =>
     $(id).addEventListener('input', previewSoon)
   );
 
@@ -636,7 +941,7 @@
   });
 
   /* template picker */
-  const AV_CONTROLS = ['avStyle', 'avColor1', 'avColor2', 'avBgMode', 'avBgColor', 'avProgress', 'avSize', 'avFps', 'avSub', 'avBadge'];
+  const AV_CONTROLS = ['avStyle', 'avColor1', 'avColor2', 'avBgMode', 'avBgColor', 'avProgress', 'avSize', 'avFps', 'avSub', 'avBadge', 'avDust', 'avPunch'];
   const picker = Templates.mount({
     box: $('avTemplates'),
     key: 'av',
@@ -650,6 +955,7 @@
         bgColor: set.avBgColor || cur.bgColor, progress: set.avProgress !== undefined ? !!set.avProgress : cur.progress,
         look: readableLook({ ...DEFAULT_LOOK, ...t.style }, keepImage ? 'image' : 'gradient'),
         badge: set.avBadge !== undefined ? set.avBadge : '',
+        dust: !!set.avDust, punch: false,
         sub: cur.sub, // like the video: the genre hint is only a placeholder
       };
       makeDraw(o, art)(ctx, audio ? Math.min(o.duration * 0.3, 20) : 0.5);
@@ -659,6 +965,7 @@
       if (palPicker) palPicker.clear(); // the template brings its own colours
       // templates saved before the label existed have no avBadge: don't leave the previous template's label
       if ((!t.set || !('avBadge' in t.set)) && !badgeTyped) Templates.setControl('avBadge', '');
+      for (const k of ['avDust', 'avPunch']) if (!t.set || !(k in t.set)) Templates.setControl(k, false); // saved before effects existed
       // the genre's suggested subtitle is a hint (placeholder, drawn faintly) — it never overwrites what the user typed
       $('avSub').placeholder = look.subHint ? 'VD: ' + look.subHint : '@yourname';
       ensureFonts().then(preview);

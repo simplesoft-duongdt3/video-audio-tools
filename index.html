@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600;800&family=Montserrat:wght@700;900&family=Playfair+Display:ital,wght@0,700;1,700&family=Lobster&family=Roboto+Mono:wght@700&family=Lora:ital,wght@0,600;1,600&family=Noto+Serif:wght@600;800&family=Dancing+Script:wght@700&family=Baloo+2:wght@800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css">
-<link rel="stylesheet" href="assets/style.css?v=87be611461">
+<link rel="stylesheet" href="assets/style.css?v=6a7b8e0622">
 <!-- Mediabunny (MP4 + H.264/AAC encoding) is loaded on demand as an ES module; the AAC extension imports "mediabunny" too. -->
 <script type="importmap">{ "imports": { "mediabunny": "https://cdn.jsdelivr.net/npm/mediabunny@1.65.2/dist/bundles/mediabunny.min.mjs" } }</script>
 </head>
@@ -323,8 +323,14 @@ Bắt đầu từ hôm nay nhé! 📚</textarea>
           <select id="avStyle">
             <option value="bars">Cột phổ</option>
             <option value="mirror">Cột đối xứng</option>
+            <option value="line">Đường neon</option>
+            <option value="led">Đèn LED</option>
             <option value="wave">Sóng âm</option>
+            <option value="layers">Sóng mềm nhiều lớp</option>
+            <option value="capsules">Tin nhắn thoại</option>
             <option value="circle">Vòng tròn</option>
+            <option value="orb">Quả cầu</option>
+            <option value="vinyl">Đĩa quay</option>
             <option value="overview">Dạng sóng cả bài</option>
             <option value="none">Không</option>
           </select>
@@ -336,6 +342,10 @@ Bắt đầu từ hôm nay nhé! 📚</textarea>
             <option value="image">Ảnh bìa làm nền (mờ)</option>
           </select>
         </label>
+      </div>
+      <div class="row tight fx-row">
+        <label class="check"><input type="checkbox" id="avDust"> ✨ Hạt bụi bay theo nhịp</label>
+        <label class="check"><input type="checkbox" id="avPunch"> 💥 Nhún theo nhịp trống</label>
       </div>
       <div class="glabel">Bộ màu</div>
       <p class="hint tpl-hint">Đổi màu cho mẫu đang chọn — chọn mẫu khác sẽ về màu của mẫu đó.</p>
@@ -418,7 +428,7 @@ Bắt đầu từ hôm nay nhé! 📚</textarea>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/1.0.11/pako.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/upng-js@2.1.0/UPNG.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js" defer></script>
-<script src="js/core.js?v=8b18d76abf"></script>
+<script src="js/core.js?v=52415829c2"></script>
 <script src="js/common.js?v=26bb3543b1"></script>
 <script src="js/convert.js?v=a892107986"></script>
 <script src="js/compress.js?v=c9854c750d"></script>
@@ -429,7 +439,7 @@ Bắt đầu từ hôm nay nhé! 📚</textarea>
 <script src="js/video-engine.js?v=0743c66684"></script>
 <script src="js/image-video.js?v=1562e67974"></script>
 <script src="js/text-video.js?v=bba5c217f0"></script>
-<script src="js/audio-video.js?v=13e24ff3bb"></script>
-<script src="js/selftest.js?v=ff89eecc2a"></script>
+<script src="js/audio-video.js?v=9aabc9c990"></script>
+<script src="js/selftest.js?v=77dea84963"></script>
 </body>
 </html>
