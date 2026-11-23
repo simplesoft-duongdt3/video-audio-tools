@@ -294,4 +294,14 @@ details.ios-only > summary { cursor: pointer; font-weight: 600; min-height: 44px
   .tpl-picker .chips button, .pal-picker .chips button { flex: 0 0 auto; white-space: nowrap; }
 }
 
-.fx-row label.check { flex: 1 1 200px; }
+
+/* effects: a toggle per effect; its options appear only when it is on */
+.fx-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.fx { border: 1px solid var(--line); border-radius: 10px; padding: 0 12px; }
+.fx label.check { margin: 0; }
+.fx .fx-opts { display: none; padding-bottom: 10px; margin: 0; }
+.fx:has(input[type=checkbox]:checked) { border-color: var(--accent2); }
+.fx:has(input[type=checkbox]:checked) .fx-opts { display: flex; }
+
+/* project rule: touch targets ≥ 44 px (selects were 40 px) */
+select { min-height: 44px; }

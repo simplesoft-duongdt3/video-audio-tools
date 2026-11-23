@@ -483,6 +483,15 @@ test('bassOnsets: a 120 BPM kick gives ~2 hits/s on the beat; a steady pad or si
   const pad = new Float32Array(6 * sr).map((_, i) => 0.4 * Math.sin((2 * Math.PI * 440 * i) / sr));
   assert.equal(C.bassOnsets([pad], sr).length, 0, 'sine pad: no beats');
   assert.equal(C.bassOnsets([new Float32Array(6 * sr)], sr).length, 0, 'silence: no beats');
+  // QC: music without drums and speech used to give "kicks" (ambient: 28 in 12 s)
+  const rnd = C.prng(3);
+  const amb = new Float32Array(12 * sr).map((_, i) => { const t = i / sr; return 0.25 * Math.sin(2 * Math.PI * 110 * t) * (0.6 + 0.4 * Math.sin(t * 0.9)) + 0.2 * Math.sin(2 * Math.PI * 165 * t) + 0.03 * (rnd() - 0.5); });
+  assert.equal(C.bassOnsets([amb], sr).length, 0, 'ambient pad + noise: no beats');
+  const voice = new Float32Array(12 * sr).map((_, i) => { const t = i / sr, env = Math.max(0, Math.sin(2 * Math.PI * 3.1 * t)) ** 2; return 0.5 * env * (Math.sin(2 * Math.PI * 170 * t) * 0.6 + Math.sin(2 * Math.PI * 520 * t) * 0.4); });
+  assert.ok(C.bassOnsets([voice], sr).length <= 2, `speech syllables are not drum hits (${C.bassOnsets([voice], sr).length})`);
+  const soft = C.bassOnsets([kicks(6, sr, 120, 0.2).map((v) => v * 0.25)], sr);
+  assert.ok(soft.length >= 10, `a soft (−12 dB) kick is still found (${soft.length})`);
+  assert.ok(soft.every((o) => o.s < 0.75), 'and stays a soft hit (fixed scale)');
   const four = C.bassOnsets([kicks(8, sr, 240)], sr); // 4 kicks/s: all of them (QC found 25 % dropped)
   assert.ok(four.length >= 30, `${four.length} of 32 hits at 4/s`);
   const fast = C.bassOnsets([kicks(4, sr, 480)], sr); // 8 kicks/s
@@ -515,4 +524,43 @@ test('envelope / envAt / prng / bandGroups', () => {
   assert.deepEqual(xs, Array.from({ length: 5 }, b), 'same seed, same sequence');
   assert.ok(xs.every((v) => v >= 0 && v < 1) && new Set(xs).size === 5);
   assert.deepEqual([...C.bandGroups(Float32Array.from([1, 1, 0, 0, 0.5, 0.5, 1, 0]), 4)], [1, 0, 0.5, 0.5]);
+});
+
+test('particleAt: deterministic, stays in the frame, moves the way its direction says', () => {
+  const rnd = C.prng(7);
+  const ps = Array.from({ length: 50 }, () => ({ x: rnd(), y: rnd(), a: rnd() * Math.PI * 2, v: 0.01 + rnd() * 0.03, spin: rnd() - 0.5 }));
+  for (const dir of ['up', 'down', 'drift', 'burst']) for (const p of ps) for (const T of [0, 1.3, 7.7, 120]) {
+    const q = C.particleAt(p, T, dir);
+    assert.deepEqual(q, C.particleAt(p, T, dir), 'same T → same place');
+    assert.ok(q.x >= -0.2 && q.x <= 1.2 && q.y >= -0.2 && q.y <= 1.2, `${dir} inside (${q.x}, ${q.y})`);
+    assert.ok(q.life >= 0 && q.life <= 1);
+  }
+  const p = { x: 0.5, y: 0.5, a: 1, v: 0.02, spin: 0 };
+  assert.ok(C.particleAt(p, 1, 'up').y < 0.5, 'up goes up');
+  assert.ok(C.particleAt(p, 1, 'down').y > 0.5, 'down goes down');
+  const b0 = C.particleAt(p, 0, 'burst'), b1 = C.particleAt(p, 2, 'burst');
+  assert.ok(Math.hypot(b1.x - 0.5, b1.y - 0.5) > Math.hypot(b0.x - 0.5, b0.y - 0.5), 'burst flies outwards');
+  assert.equal(C.lifeAlpha(0), 0); assert.equal(C.lifeAlpha(1), 0); assert.equal(C.lifeAlpha(0.5), 1);
+});
+
+test('ripples / slowWave / mixHex', () => {
+  const on = [{ t: 1, s: 1 }, { t: 1.5, s: 0.5 }];
+  assert.deepEqual(C.ripples(on, 0.5), []);
+  const r = C.ripples(on, 1.6);
+  assert.equal(r.length, 2);
+  assert.ok(r.every((x) => x.r >= 0 && x.r < 1 && x.a > 0 && x.a <= 0.45), 'thin, faint, short-lived rings');
+  assert.equal(C.ripples(on, 3).length, 0, 'gone after 1.2 s');
+  assert.equal(C.slowWave(0), 0); assert.ok(Math.abs(C.slowWave(4) - 1) < 1e-9);
+  let maxStep = 0; for (let t = 0; t < 16; t += 1 / 30) maxStep = Math.max(maxStep, Math.abs(C.slowWave(t + 1 / 30) - C.slowWave(t)));
+  assert.ok(maxStep < 0.02, 'never changes fast (≤ 2 % per frame)');
+  assert.equal(C.mixHex('#000000', '#ffffff', 0.5), '#808080');
+  assert.equal(C.mixHex('#ff0000', '#0000ff', 0), '#ff0000');
+});
+
+test('colour flow (≤ 30 % mix) never makes the two visualizer colours meet (QC: complementary pairs went grey)', () => {
+  for (const [a, b] of [['#25f4ee', '#fe2c55'], ['#ffffff', '#000000'], ['#a3e635', '#22d3ee']]) {
+    const x = C.mixHex(a, b, 0.3 * C.slowWave(5, 10)), y = C.mixHex(b, a, 0.3 * C.slowWave(5, 10));
+    assert.notEqual(x, y);
+    assert.ok(C.contrast(x, y) > 1.3 || C.contrast(a, b) < 1.6, `${a}/${b} still distinct at the peak: ${x} vs ${y}`);
+  }
 });

@@ -218,8 +218,14 @@ async function main() {
   await page.fill('#avSub', '@kenh.cua.ban');
   await page.waitForTimeout(400);
   await scrollTo('#avStyle');
+  await shot('av-style', [['#avStyle', 1], ['#avBgMode', 2]]);
+  await page.check('#avDust');
+  await page.selectOption('#avDustShape', 'petal');
+  await page.selectOption('#avDustDir', 'down');
   await page.check('#avPunch');
-  await shot('av-style', [['#avStyle', 1], ['#avBgMode', 2], ['.fx-row', 3]]);
+  await page.waitForTimeout(300);
+  await scrollTo('#avFx');
+  await shot('av-fx', [['#avFx .fx:nth-child(1)', 1], ['#avFx .fx:nth-child(2)', 2]]);
   await scrollTo('.drop[data-input=avImg]');
   await shot('av-cover', [['.drop[data-input=avImg]', 1], ['#avTrim .trim-wave', 2]]);
 
@@ -420,8 +426,17 @@ function page_(s) {
     <li><b>Sóng mềm nhiều lớp</b> và <b>Quả cầu</b> — chuyển động êm, hợp chữa lành, thiền, ASMR.</li>
     <li><b>Sóng âm</b>, <b>Dạng sóng cả bài</b> (sóng của cả bài, tô màu dần khi phát).</li>
   </ul>
-  <p>Chọn kiểu <b>nền</b> <span class="n">2</span> (chuyển màu, một màu, hoặc ảnh bìa làm nền mờ). Bật <b>hiệu ứng theo nhịp</b> <span class="n">3</span>: <b>✨ Hạt bụi bay theo nhịp</b> và <b>💥 Nhún theo nhịp trống</b> (ảnh bìa / đĩa nhún nhẹ mỗi khi có tiếng trống). Hiệu ứng chỉ chuyển động, <b>không nhấp nháy</b> — an toàn cho người nhạy cảm với ánh sáng.</p>
-  ${fig(s['av-style'], 'Kiểu sóng nhạc (1), nền (2), hiệu ứng theo nhịp (3)')}
+  <p>Chọn kiểu <b>nền</b> <span class="n">2</span> (chuyển màu, một màu, hoặc ảnh bìa làm nền mờ).</p>
+  ${fig(s['av-style'], 'Kiểu sóng nhạc (1) và nền (2)')}
+  <h3>Hiệu ứng theo nhạc</h3>
+  <p>Bật hiệu ứng nào thì phần <b>tuỳ chỉnh</b> của hiệu ứng đó hiện ra ngay bên dưới. Mẫu đã bật sẵn hiệu ứng hợp thể loại (ví dụ Đọc thơ có cánh hoa rơi, Ngủ ngon có tuyết, ASMR có bong bóng).</p>
+  <ul>
+    <li><b>✨ Hạt bay theo nhịp</b> <span class="n">1</span>: chọn <b>kiểu hạt</b> (đốm sáng, bông tuyết, cánh hoa, trái tim, ngôi sao, nốt nhạc, bong bóng), <b>số lượng</b>, <b>hướng bay</b> (trôi, bay lên, rơi xuống, toả từ giữa), mức <b>theo nhịp trống</b> và <b>màu hạt</b>.</li>
+    <li><b>💥 Nhún theo nhịp trống</b> <span class="n">2</span>: <b>mức nhún</b> (nhẹ / vừa / mạnh), <b>nhún phần</b> nào (ảnh &amp; sóng nhạc, tên bài, hoặc cả hai), <b>độ dài nhịp</b> (ngắn dứt khoát / dài mềm).</li>
+    <li><b>🌊 Vòng sóng lan</b> từ ảnh bìa mỗi khi có tiếng trống. <b>🎐 Lắc lư nhẹ</b> ảnh bìa theo nhạc. <b>🎞️ Nền chuyển động chậm</b> (đẹp nhất khi dùng ảnh bìa làm nền). <b>🌈 Màu sóng chảy dần</b> giữa hai màu.</li>
+  </ul>
+  <div class="tip">💡 Mọi hiệu ứng chỉ là <b>chuyển động</b>, không nhấp nháy sáng–tối — an toàn cho người nhạy cảm với ánh sáng. Bản xem thử và video xuất ra giống hệt nhau.</div>
+  ${fig(s['av-fx'], 'Hạt bay với tuỳ chỉnh (1) và Nhún theo nhịp (2)')}
   <p>Thêm <b>ảnh bìa</b> <span class="n">1</span> (không bắt buộc — mẫu Sách nói hiện ảnh thành bìa sách). Chọn <b>đoạn nhạc</b> <span class="n">2</span> — bài dài trên 5 phút nên chọn đoạn ngắn để iPhone không bị thiếu bộ nhớ.</p>
   ${fig(s['av-cover'], 'Ảnh bìa (1) và đoạn nhạc (2)')}
   <h3>Bỏ đoạn im lặng thừa (ghi âm, podcast, bài giảng)</h3>

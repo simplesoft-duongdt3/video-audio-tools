@@ -530,27 +530,28 @@
   function bassOnsets(channels, sr, from = 0, len = channels[0].length - from) {
     const hop = 1024, n = Math.floor(len / hop);
     if (n < 4) return [];
-    const a = 1 - Math.exp((-2 * Math.PI * 150) / sr);
-    let y1 = 0, y2 = 0;
-    const E = new Float32Array(n);
+    // 4-pole low-pass at 100 Hz: kick drums live below ~100 Hz; voices (85–255 Hz fundamentals) mostly don't
+    const a = 1 - Math.exp((-2 * Math.PI * 100) / sr);
+    let y1 = 0, y2 = 0, y3 = 0, y4 = 0;
+    const E = new Float32Array(n), share = new Float32Array(n);
     for (let k = 0; k < n; k++) {
-      let e = 0;
+      let e = 0, ef = 0;
       for (let i = from + k * hop, end = i + hop; i < end; i++) {
         let x = 0;
         for (const ch of channels) x += ch[i] || 0;
         x /= channels.length;
-        y1 += a * (x - y1); y2 += a * (y1 - y2); // 2nd-order low-pass
-        e += y2 * y2;
+        y1 += a * (x - y1); y2 += a * (y1 - y2); y3 += a * (y2 - y3); y4 += a * (y3 - y4);
+        e += y4 * y4; ef += x * x;
       }
       E[k] = Math.log1p(Math.sqrt(e / hop) * 10);
+      share[k] = ef > 0 ? Math.sqrt(e / ef) : 0; // how much of the sound is bass right now
     }
     const flux = new Float32Array(n);
     for (let k = 1; k < n; k++) flux[k] = Math.max(0, E[k] - E[k - 1]);
     // ≥ 0.24 s between hits (≤ ~4/s): 0.25 s missed real 4 Hz kicks that land 10 or 11 hops apart
     const win = Math.max(2, Math.round((0.75 * sr) / hop)), gap = Math.floor((0.24 * sr) / hop);
     const floor = Math.log1p(Math.pow(10, -50 / 20) * 10) * 0.5;
-    let maxF = 1e-9;
-    for (let k = 0; k < n; k++) if (flux[k] > maxF) maxF = flux[k];
+    const ABS_FLOOR = 0.12; // ambient pads / noise never exceed ~0.07 (measured); real kicks ≥ 0.45
     const out = [];
     let last = -Infinity;
     for (let k = 1; k < n - 2; k++) {
@@ -561,8 +562,15 @@
       const sd = c ? Math.sqrt(v / c) : 0;
       const f = flux[k];
       const peak = f >= flux[k - 1] && f >= flux[k + 1] && f >= (flux[k - 2] || 0) && f >= flux[k + 2];
-      if (f > Math.max(floor, 1.5 * m + 0.5 * sd) && peak && k - last >= gap) {
-        out.push({ t: (k * hop) / sr, s: Math.max(0.4, Math.min(1, f / maxF)) });
+      // a drum hit rises SHARPLY: most of the rise happens within one hop (46 ms at 22 kHz). A spoken
+      // syllable or a swelling pad rises over several hops → not a beat (QC: ambient / speech gave fake hits)
+      const before = Math.min(E[Math.max(0, k - 3)], E[Math.max(0, k - 2)], E[k - 1]);
+      const after = Math.max(E[k], E[k + 1] || 0, E[k + 2] || 0);
+      const sharp = after - before > 0 ? f / (after - before) : 0;
+      const bassy = Math.max(share[k], share[k + 1] || 0) >= 0.35; // the hit itself is mostly bass
+      if (f > Math.max(floor, ABS_FLOOR, 1.5 * m + 0.5 * sd) && sharp >= 0.55 && bassy && peak && k - last >= gap) {
+        // strength on a fixed scale (not relative to the clip's loudest moment): a soft kick stays soft
+        out.push({ t: (k * hop) / sr, s: Math.max(0.4, Math.min(1, f / 1.0)) });
         last = k;
       }
     }
@@ -587,7 +595,7 @@
   /** Cumulative bass "push" (monotonic in t): each hit adds its strength, eased over 0.4 s. */
   function bassPush(onsets, t) {
     let b = 0;
-    for (let i = lastOnset(onsets, t); i >= 0; i--) b += onsets[i].s * (1 - Math.exp(-(t - onsets[i].t) / 0.4));
+    for (let i = lastOnset(onsets, t); i >= 0; i--) b += onsets[i].s * (1 - Math.exp(-(t - onsets[i].t) / 0.8));
     return b;
   }
   /** Small seeded PRNG (mulberry32): the same "random" particles in every preview and export. */
@@ -599,6 +607,48 @@
       return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
     };
   }
+  /**
+   * Where a particle is at "effect time" T (seconds, already sped up by bass hits). Pure: same T → same place.
+   * p = { x, y, a (heading), v (speed, screen fractions / s), spin } from a seeded PRNG.
+   * dir: 'up' | 'down' | 'drift' | 'burst' (out of the centre). → { x, y (0..1 frame fractions), rot (rad), life 0..1 }
+   */
+  function particleAt(p, T, dir = 'drift') {
+    const wrap = (v) => ((v % 1) + 1) % 1;
+    const rot = p.a + (p.spin || 0) * T;
+    if (dir === 'up') return { x: wrap(p.x + 0.03 * Math.sin(T * 0.8 + p.a * 3)), y: wrap(p.y - p.v * 1.6 * T), rot, life: 1 };
+    if (dir === 'down') return { x: wrap(p.x + 0.04 * Math.sin(T * 0.6 + p.a * 5)), y: wrap(p.y + p.v * 1.6 * T), rot, life: 1 };
+    if (dir === 'burst') {
+      // each particle flies out of the centre and starts again; life fades it in and out (no popping)
+      const life = wrap(p.y + p.v * 3.6 * T); // QC: at 0.9 a burst looked frozen (one life took 30–110 s)
+      const r = 0.06 + 0.6 * life;
+      return { x: 0.5 + Math.cos(p.a * 6.283) * r * 0.75, y: 0.5 + Math.sin(p.a * 6.283) * r, rot, life };
+    }
+    return { x: wrap(p.x + Math.cos(p.a) * p.v * T), y: wrap(p.y + Math.sin(p.a) * p.v * T - 0.02 * T), rot, life: 1 };
+  }
+
+  /** Gentle fade-in/out over a particle's life (0 at birth and death, 1 in the middle): no sudden pops. */
+  const lifeAlpha = (life) => Math.min(1, life / 0.15, (1 - life) / 0.15);
+
+  /** Ripple rings from bass hits: [{ r (0..1 of max radius), a (alpha) }], ring lives `span` s, fades linearly. */
+  function ripples(onsets, t, span = 1.2) {
+    const out = [];
+    for (let i = lastOnset(onsets, t); i >= 0 && t - onsets[i].t < span; i--) {
+      const f = (t - onsets[i].t) / span;
+      out.push({ r: f, a: 0.45 * onsets[i].s * (1 - f) });
+    }
+    return out;
+  }
+
+  /** Slowly varying 0..1 (cosine, `period` s): for slow background motion and colour flow — never fast. */
+  const slowWave = (t, period = 8) => 0.5 - 0.5 * Math.cos((2 * Math.PI * t) / period);
+
+  /** Mix two #rrggbb colours → #rrggbb. */
+  function mixHex(a, b, f) {
+    const x = parseInt(a.slice(1), 16), y = parseInt(b.slice(1), 16);
+    const ch = (s) => Math.round(((x >> s) & 255) * (1 - f) + ((y >> s) & 255) * f);
+    return '#' + [16, 8, 0].map((s) => ch(s).toString(16).padStart(2, '0')).join('');
+  }
+
   /** Mean of band groups: k groups over the band array (low → high). */
   function bandGroups(bands, k) {
     const out = new Float32Array(k), n = bands.length;
@@ -769,7 +819,7 @@
   }
 
   return {
-    audioFade, fadeGain, exportEstimate, friendlyError, FILTERS, applyFilter, avGeometry, trimDrag, findSilences, silenceCuts, removeRanges, envelope, envAt, bassOnsets, punchAt, bassPush, prng, bandGroups,
+    audioFade, fadeGain, exportEstimate, friendlyError, FILTERS, applyFilter, avGeometry, trimDrag, findSilences, silenceCuts, removeRanges, envelope, envAt, bassOnsets, punchAt, bassPush, prng, bandGroups, particleAt, lifeAlpha, ripples, slowWave, mixHex,
     formatBytes, formatTime, baseName, detectPlatform,
     isHeic, isHeicBrand, looksLikeAudio, AUDIO_EXT, fitArea,
     exifOrientation, orientationApp1, stripJpegBytes,
