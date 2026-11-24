@@ -47,7 +47,7 @@ test.describe('estimate before export', () => {
     await page.fill('#tvSlideDur', '20');
     const noAudio = await tv.textContent();
     await page.setInputFiles('#tvAudio', fx('tone.mp3'));
-    await expect(page.locator('#tvAudioInfo')).toContainText('slide');
+    await expect(page.locator('#tvAudioInfo')).toContainText('tone.mp3');
     await expect(tv, 'the estimate follows the audio length once it is loaded').not.toHaveText(noAudio);
   });
 });

@@ -2,7 +2,8 @@
 // Run: npm run test:e2e   (needs Google Chrome installed; `npx playwright install webkit` for the iPhone project)
 const { defineConfig, devices } = require('@playwright/test');
 
-const PORT = 8766;
+// PW_PORT / E2E_PORT: another checkout (a second worktree) may already serve 8766, and reuseExistingServer would test THAT copy
+const PORT = +process.env.PW_PORT || +process.env.E2E_PORT || 8766;
 
 module.exports = defineConfig({
   testDir: 'tests/e2e',

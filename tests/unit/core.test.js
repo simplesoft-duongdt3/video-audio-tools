@@ -757,3 +757,347 @@ test('wavParts: byte-identical to encodeWav, in chunks (no single huge buffer)',
   assert.equal(Buffer.compare(Buffer.concat(parts.map((p) => Buffer.from(p))), Buffer.from(C.encodeWav([a, b], sr, 123, sr * 7 + 5, 1.7))), 0);
   assert.equal(C.wavParts([a], sr, 0, 0).length, 1, 'empty range → header only');
 });
+
+/* ---------------- text video: slide plans, highlight, reading time ---------------- */
+test('slidePlan even: equal parts of the music; fixed seconds keep their length (extra slides hidden past the end)', () => {
+  assert.deepEqual(C.slidePlan({ n: 4, audioDur: 20 }), { starts: [0, 5, 10, 15], duration: 20, snapped: 0, tooShort: false });
+  const p = C.slidePlan({ n: 4, fixedSeg: 8, audioDur: 20 });
+  assert.deepEqual(p.starts, [0, 8, 16, 24]);
+  assert.equal(p.duration, 20);
+  assert.deepEqual(C.slidePlan({ n: 3 }).starts, [0, 3, 6]); // no music: 3 s each
+});
+
+test('slidePlan beat: slide changes land ON a drum hit near the even point, never closer than 0.5 s', () => {
+  const onsets = [0.5, 4.9, 5.4, 9.8, 10.9, 15.2].map((t) => ({ t, s: 1 }));
+  const p = C.slidePlan({ n: 4, mode: 'beat', audioDur: 20, onsets });
+  assert.deepEqual(p.starts, [0, 4.9, 9.8, 15.2]);
+  assert.equal(p.tooShort, false);
+  assert.equal(p.snapped, 3);
+  // no hit near a change → that change stays on the even point
+  const q = C.slidePlan({ n: 2, mode: 'beat', audioDur: 20, onsets: [{ t: 1, s: 1 }] });
+  assert.deepEqual(q.starts, [0, 10]);
+  assert.equal(q.snapped, 0);
+  // no beats at all = even
+  assert.deepEqual(C.slidePlan({ n: 2, mode: 'beat', audioDur: 10, onsets: [] }).starts, [0, 5]);
+  // dense hits: starts strictly increasing with ≥ MIN_SLIDE gaps
+  const dense = Array.from({ length: 200 }, (_, i) => ({ t: i * 0.25, s: 1 }));
+  const d = C.slidePlan({ n: 30, mode: 'beat', audioDur: 40, onsets: dense });
+  for (let i = 1; i < d.starts.length; i++) assert.ok(d.starts[i] - d.starts[i - 1] >= C.MIN_SLIDE - 1e-9);
+  // review: 30 slides on 10 s with few hits — beat mode used to push 10 slides past the end (hidden)
+  const many = C.slidePlan({ n: 30, mode: 'beat', audioDur: 10, onsets: [{ t: 2, s: 1 }, { t: 4, s: 1 }] });
+  assert.equal(many.tooShort, true);
+  assert.deepEqual(C.readWarnings(Array(30).fill('a'), many.starts, many.duration).filter((w) => w.hidden), []);
+  assert.deepEqual(many.starts, C.slidePlan({ n: 30, audioDur: 10 }).starts);
+});
+
+test('slidePlan tap: tapped moments are the changes; double taps and too-late taps ignored; untapped slides share the rest', () => {
+  assert.deepEqual(C.slidePlan({ n: 3, mode: 'tap', audioDur: 30, taps: [7, 18] }).starts, [0, 7, 18]);
+  assert.deepEqual(C.slidePlan({ n: 3, mode: 'tap', audioDur: 30, taps: [7, 7.2, 18, 29.9] }).starts, [0, 7, 18]);
+  const p = C.slidePlan({ n: 4, mode: 'tap', audioDur: 30, taps: [10] }); // slides 2–4 share 10…30
+  assert.deepEqual(p.starts.map((x) => +x.toFixed(2)), [0, 10, 16.67, 23.33]);
+  assert.equal(p.duration, 30);
+  const q = C.slidePlan({ n: 3, mode: 'tap', taps: [2] }); // no music: tail slides 3 s each
+  assert.deepEqual(q.starts, [0, 2, 5]);
+  assert.equal(q.duration, 8);
+  assert.deepEqual(C.slidePlan({ n: 2, mode: 'tap', audioDur: 10, taps: [] }).starts, [0, 5]); // nothing tapped = even
+});
+
+test('slideAt: the slide on screen at any time', () => {
+  const s = [0, 4.6, 9.8];
+  assert.deepEqual([0, 4.59, 4.6, 9.7, 9.8, 99].map((t) => C.slideAt(s, t)), [0, 0, 1, 1, 2, 2]);
+});
+
+test('highlightWords + lineHighlights: *keyword* boxes survive wrapping and broken long words, runs rebuild the line exactly', () => {
+  const { plain, words } = C.highlightWords('Cách *kiếm tiền* online\nngay *hôm*nay');
+  assert.equal(plain, 'Cách kiếm tiền online\nngay hômnay');
+  assert.deepEqual(words.map((w) => w.hi), [false, true, true, false, false, true]);
+  assert.deepEqual([words[5].a, words[5].b], [0, 3]); // 'hômnay': only 'hôm' is starred
+  const lines = ['Cách kiếm', 'tiền online', 'ngay hôm', 'nay'.length ? 'nay' : '']; // "hômnay" broken in two pieces
+  const runs = C.lineHighlights(['Cách kiếm', 'tiền online', 'ngay hôm', 'nay'], words);
+  runs.forEach((r, i) => assert.equal(r.map((x) => x.t).join(''), lines[i]));
+  assert.deepEqual(runs[0], [{ t: 'Cách ', hi: false }, { t: 'kiếm', hi: true }]);
+  assert.deepEqual(runs[1], [{ t: 'tiền', hi: true }, { t: ' online', hi: false }]);
+  assert.deepEqual(runs[2], [{ t: 'ngay ', hi: false }, { t: 'hôm', hi: true }]);
+  assert.deepEqual(runs[3], [{ t: 'nay', hi: true }]);
+  const two = C.lineHighlights(['a b c'], C.highlightWords('a *b c*').words)[0];
+  assert.deepEqual(two, [{ t: 'a ', hi: false }, { t: 'b c', hi: true }]); // one box over both words
+  assert.deepEqual(C.lineHighlights([''], [])[0], [{ t: '', hi: false }]);
+  // punctuation outside the stars stays outside the box
+  const p2 = C.lineHighlights(['đọc 10 trang sách, mỗi (ngày)'], C.highlightWords('đọc *10 trang sách*, mỗi (*ngày*)').words)[0];
+  assert.deepEqual(p2, [{ t: 'đọc ', hi: false }, { t: '10 trang sách', hi: true }, { t: ', mỗi (', hi: false }, { t: 'ngày', hi: true }, { t: ')', hi: false }]);
+});
+
+test('readTime / readWarnings: a slide shown shorter than it takes to read (or never shown) is reported', () => {
+  assert.equal(C.readTime('Chào'), 1);
+  assert.ok(C.readTime('Xin chào') > 1 && C.readTime('Xin chào') < 1.1);
+  assert.ok(Math.abs(C.readTime('một hai ba bốn năm sáu bảy tám chín mười mười một mười hai') - (0.4 + 14 / 3)) < 1e-9);
+  assert.equal(C.readTime('*một* hai'), C.readTime('một hai'));
+  const sl = ['ngắn', 'một hai ba bốn năm sáu bảy tám chín mười mười một mười hai', 'ẩn'];
+  const w = C.readWarnings(sl, [0, 2, 10], 8);
+  assert.deepEqual(w.map((x) => [x.i, x.hidden]), [[2, true]]);
+  const w2 = C.readWarnings(sl, [0, 2, 4], 8);
+  assert.deepEqual(w2.map((x) => x.i), [1]);
+  assert.equal(w2[0].have, 2);
+});
+
+/* ---------------- captions ---------------- */
+test('parseCueTime: SRT, VTT, short and plain-second times', () => {
+  assert.equal(C.parseCueTime('01:02:03,450'), 3723.45);
+  assert.equal(C.parseCueTime('00:00:05.000'), 5);
+  assert.equal(C.parseCueTime('02:03.25'), 123.25);
+  assert.equal(C.parseCueTime(' 1:02 '), 62);
+  assert.equal(C.parseCueTime('62.5'), 62.5);
+  assert.ok(Number.isNaN(C.parseCueTime('abc')));
+});
+
+test('parseSubtitles: SRT with CRLF, BOM, 2-line cues and markup', () => {
+  const srt = '﻿1\r\n00:00:01,000 --> 00:00:02,500\r\n<i>Xin chào</i>\r\ncác bạn\r\n\r\n2\r\n00:00:03,000 --> 00:00:04,000\r\n{\\an8}Tôi là &amp; AI\r\n\r\n';
+  assert.deepEqual(C.parseSubtitles(srt), [
+    { start: 1, end: 2.5, text: 'Xin chào các bạn' },
+    { start: 3, end: 4, text: 'Tôi là & AI' },
+  ]);
+});
+
+test('parseSubtitles: WebVTT header, NOTE / STYLE blocks, cue ids, settings, voice tags; sorted; bad cues dropped', () => {
+  const vtt = 'WEBVTT - demo\n\nNOTE a comment\n--> not a cue\n\nSTYLE\n::cue { color: red }\n\nb\n00:05.000 --> 00:06.000 align:start line:0\n<v Lan>Thứ hai</v>\n\na\n00:01.000 --> 00:02.000\n<c.yellow>Thứ <00:01.500>nhất</c>\n\n00:03.000 --> 00:02.000\nngược\n\n00:07.000 --> 00:08.000\n\n';
+  assert.deepEqual(C.parseSubtitles(vtt), [
+    { start: 1, end: 2, text: 'Thứ nhất' },
+    { start: 5, end: 6, text: 'Thứ hai' },
+  ]);
+  assert.deepEqual(C.parseSubtitles('not subtitles at all'), []);
+});
+
+test('toSRT round-trips through parseSubtitles', () => {
+  const cues = [{ start: 0.5, end: 2, text: 'Một' }, { start: 3723.45, end: 3725, text: 'Hai' }];
+  const srt = C.toSRT(cues);
+  assert.match(srt, /^1\n00:00:00,500 --> 00:00:02,000\nMột\n\n2\n01:02:03,450 --> 01:02:05,000\nHai\n$/);
+  assert.deepEqual(C.parseSubtitles(srt), cues);
+});
+
+test('captionLines + spreadCues: one caption per line, time in proportion to length, covers the whole clip', () => {
+  const lines = C.captionLines('  Dòng   một \n\n Một dòng dài hơn hẳn nhiều chữ \r\nỪ');
+  assert.deepEqual(lines, ['Dòng một', 'Một dòng dài hơn hẳn nhiều chữ', 'Ừ']);
+  const cues = C.spreadCues(lines, 10, 20);
+  assert.equal(cues[0].start, 10);
+  assert.equal(cues[2].end, 20);
+  for (let i = 1; i < cues.length; i++) assert.equal(cues[i].start, cues[i - 1].end);
+  assert.ok(cues[1].end - cues[1].start > cues[0].end - cues[0].start, 'long line shows longer');
+  assert.ok(cues[2].end - cues[2].start > 1, 'a 1-word line still gets readable time');
+  assert.deepEqual(C.spreadCues([], 0, 5), []);
+});
+
+test('shiftCues: sync fix, never negative', () => {
+  const cues = [{ start: 0.2, end: 1, text: 'a' }, { start: 2, end: 3, text: 'b' }];
+  assert.deepEqual(C.shiftCues(cues, 0.5), [{ start: 0.7, end: 1.5, text: 'a' }, { start: 2.5, end: 3.5, text: 'b' }]);
+  assert.deepEqual(C.shiftCues(cues, -1.5), [{ start: 0.5, end: 1.5, text: 'b' }]);
+});
+
+test('mapTime / unmapTime / remapCues: captions follow the song after silences are removed', () => {
+  const cuts = [{ from: 2, to: 4 }, { from: 10, to: 11 }];
+  assert.equal(C.mapTime(1, cuts), 1);
+  assert.equal(C.mapTime(3, cuts), 2); // inside a cut → where it was
+  assert.equal(C.mapTime(5, cuts), 3);
+  assert.equal(C.mapTime(12, cuts), 9);
+  for (const t of [0, 1.5, 2.5, 6, 8.9, 9.5]) assert.equal(C.mapTime(C.unmapTime(t, cuts), cuts), t);
+  assert.equal(C.unmapTime(2, cuts), 4);
+  const cues = [{ start: 5, end: 6, text: 'after' }, { start: 2.5, end: 3.5, text: 'inside' }, { start: 1, end: 3, text: 'across' }];
+  assert.deepEqual(C.remapCues(cues, cuts), [{ start: 3, end: 4, text: 'after' }, { start: 1, end: 2, text: 'across' }]);
+  assert.equal(C.remapCues(cues, null), cues);
+});
+
+test('cueAt: the caption on screen at t (gaps → none, overlap → the later one)', () => {
+  const cues = [{ start: 0, end: 1 }, { start: 1, end: 2 }, { start: 3, end: 5 }, { start: 4, end: 4.5 }];
+  assert.equal(C.cueAt(cues, -0.1), -1);
+  assert.equal(C.cueAt(cues, 0.5), 0);
+  assert.equal(C.cueAt(cues, 1), 1); // end is exclusive
+  assert.equal(C.cueAt(cues, 2.5), -1);
+  assert.equal(C.cueAt(cues, 4.2), 3);
+  assert.equal(C.cueAt(cues, 4.7), 2);
+  assert.equal(C.cueAt([], 1), -1);
+});
+
+test('activeWord: word-by-word highlight moves through the cue, weighted by word length', () => {
+  assert.equal(C.activeWord('a bb ccc', 0, 3, -1), -1);
+  assert.equal(C.activeWord('a bb ccc', 0, 3, 0), 0);
+  assert.equal(C.activeWord('a bb ccc', 0, 3, 0.9), 1); // weights 2,3,4 of 9 → word 2 from 0.67 s
+  assert.equal(C.activeWord('a bb ccc', 0, 3, 2), 2);
+  assert.equal(C.activeWord('a bb ccc', 0, 3, 9), 2);
+  assert.equal(C.activeWord('', 0, 3, 1), -1);
+});
+
+test('captionRect: inside the TikTok, Reels AND Shorts safe zones on 9:16; a margin elsewhere', () => {
+  for (const [W, H] of [[1080, 1920], [720, 1280], [1080, 1350]]) {
+    const r = C.captionRect(W, H);
+    for (const p of ['tiktok', 'reels', 'shorts']) {
+      const s = C.safeRect(p, W, H);
+      assert.ok(r.x >= s.x && r.y >= s.y && r.x + r.w <= s.x + s.w && r.y + r.h <= s.y + s.h, `${W}x${H} inside ${p}`);
+    }
+    assert.ok(r.y >= H * 0.06 && r.y + r.h <= H * 0.78, `${W}x${H}: within the project's 6 %–78 % band`);
+  }
+  assert.deepEqual(C.captionRect(1920, 1080), { x: 96, y: 54, w: 1728, h: 918 });
+});
+
+test('caption colours: white text and the yellow highlight have ≥ 4.5:1 contrast on the black outline', () => {
+  assert.ok(C.contrast('#ffffff', '#000000') >= 4.5);
+  assert.ok(C.contrast('#ffe14d', '#000000') >= 4.5);
+});
+
+test('captionTop: lowest free spot in the safe box, never over the title', () => {
+  const r = { x: 0, y: 100, w: 500, h: 900 }; // rows 100..1000
+  assert.equal(C.captionTop(r, 80), 920); // nothing to avoid: bottom
+  assert.equal(C.captionTop(r, 80, [[300, 500]]), 920); // title far above: still bottom
+  assert.equal(C.captionTop(r, 80, [[900, 1100]], 10), 810); // title at the bottom: just above it
+  assert.equal(C.captionTop(r, 80, [[700, 850]], 10), 920); // room below the title: still the bottom
+  assert.equal(C.captionTop(r, 80, [[650, 960]], 10), 560); // no room below: above
+  assert.equal(C.captionTop(r, 80, [[50, 1100]]), 920); // nowhere free: bottom (readable outline anyway)
+  for (const y of [C.captionTop(r, 80, [[900, 1100]]), C.captionTop(r, 80, [[650, 960]])]) assert.ok(y >= 100 && y + 80 <= 1000);
+});
+
+/* ---------------- Cắt & đổi khung video ---------------- */
+test('reframeSize: 9:16 / 1:1 / 4:5 at 1080 wide; "keep" = source shape, long side ≤ 1920, even sizes', () => {
+  assert.deepEqual(C.reframeSize('9:16', 1920, 1080), { w: 1080, h: 1920 });
+  assert.deepEqual(C.reframeSize('1:1', 1920, 1080), { w: 1080, h: 1080 });
+  assert.deepEqual(C.reframeSize('4:5', 1920, 1080), { w: 1080, h: 1350 });
+  assert.deepEqual(C.reframeSize('keep', 3840, 2160), { w: 1920, h: 1080 }); // 4K: lighter for phones
+  assert.deepEqual(C.reframeSize('keep', 1080, 1920), { w: 1080, h: 1920 });
+  assert.deepEqual(C.reframeSize('keep', 721, 405), { w: 720, h: 404 }); // H.264 needs even sizes
+  assert.deepEqual(C.reframeSize('keep', 0, 0), { w: 0, h: 0 });
+});
+
+test('reframeCrop: 16:9 → 9:16 keeps the full height; position 0 / 0.5 / 1 = left / centre / right', () => {
+  const l = C.reframeCrop(1920, 1080, 1080, 1920, 0), m = C.reframeCrop(1920, 1080, 1080, 1920, 0.5), r = C.reframeCrop(1920, 1080, 1080, 1920, 1);
+  assert.deepEqual(l, { left: 0, top: 0, width: 608, height: 1080, axis: 'x' });
+  assert.equal(m.left, 656);
+  assert.equal(r.left + r.width, 1920); // flush right, never outside the source
+  assert.ok(Math.abs(608 / 1080 - 9 / 16) < 0.005);
+  // a tall phone video into a square: slides vertically
+  assert.deepEqual(C.reframeCrop(1080, 1920, 1080, 1080, 0.5), { left: 0, top: 420, width: 1080, height: 1080, axis: 'y' });
+  // same shape: nothing to slide, the whole picture
+  assert.deepEqual(C.reframeCrop(320, 240, 320, 240, 1), { left: 0, top: 0, width: 320, height: 240, axis: null });
+  // bad positions are clamped / defaulted, odd sources give even sizes inside the source
+  assert.equal(C.reframeCrop(1920, 1080, 1080, 1920, 7).left, 1312);
+  assert.equal(C.reframeCrop(1920, 1080, 1080, 1920, -1).left, 0);
+  assert.equal(C.reframeCrop(1920, 1080, 1080, 1920, NaN).left, 656);
+  const o = C.reframeCrop(1279, 719, 1080, 1920, 1);
+  assert.ok(o.width % 2 === 0 && o.height % 2 === 0 && o.left + o.width <= 1279 && o.height <= 719);
+});
+
+test('reframeDrag: dragging the picture right shows more of its left side; clamped to 0..1', () => {
+  const slack = C.reframeSlack(1920, 1080, 1080, 1920);
+  assert.ok(Math.abs(slack - (1312 * 1080) / 608) < 1e-6);
+  assert.ok(C.reframeDrag(0.5, 100, slack) < 0.5);
+  assert.ok(C.reframeDrag(0.5, -100, slack) > 0.5);
+  assert.equal(C.reframeDrag(0.5, -1e6, slack), 1);
+  assert.equal(C.reframeDrag(0.5, 1e6, slack), 0);
+  assert.equal(C.reframeDrag(0.3, 50, 0), 0.3); // nothing to slide
+  assert.equal(C.reframeSlack(320, 240, 320, 240), 0);
+});
+
+test('reframeFit: the whole 16:9 picture centred in 9:16 (room above and below for the blurred / coloured background)', () => {
+  assert.deepEqual(C.reframeFit(1920, 1080, 1080, 1920), { x: 0, y: 656, w: 1080, h: 608 });
+  assert.deepEqual(C.reframeFit(1080, 1920, 1080, 1080), { x: 236, y: 0, w: 608, h: 1080 });
+});
+
+test('reframeSegment: empty end = to the end; too short / past the end gives a message', () => {
+  assert.deepEqual(C.reframeSegment(2, '', 10), { start: 2, end: 10, error: null });
+  assert.deepEqual(C.reframeSegment('1.5', '4', 10), { start: 1.5, end: 4, error: null });
+  assert.equal(C.reframeSegment(0, 99, 10).end, 10);
+  assert.match(C.reframeSegment(12, '', 10).error, /bắt đầu/);
+  assert.match(C.reframeSegment(4, 4.2, 10).error, /0,5 giây/);
+  assert.match(C.reframeSegment(0, '', 0).error, /Chưa có video/);
+});
+
+test('formatTenths: the chosen part to a tenth of a second, Vietnamese decimal comma', () => {
+  assert.equal(C.formatTenths(0.5), '0:00,5');
+  assert.equal(C.formatTenths(75.25), '1:15,3');
+  assert.equal(C.formatTenths(59.96), '1:00,0'); // not "0:60,0"
+  assert.equal(C.formatTenths(''), '0:00,0');
+});
+
+test('wordReveal: words appear one by one; the newest word has its own progress (word-pop / karaoke)', () => {
+  assert.deepEqual(C.wordReveal([2, 2], 0), { shown: 0, cur: -1, p: 0 });
+  assert.deepEqual(C.wordReveal([2, 2], 1), { shown: 4, cur: 3, p: 1 });
+  const h = C.wordReveal([2, 2], 0.375); // 1.5 words
+  assert.equal(h.shown, 2);
+  assert.equal(h.cur, 1);
+  assert.ok(Math.abs(h.p - 0.5) < 1e-9);
+  assert.deepEqual(C.wordReveal([], 0.5), { shown: 0, cur: -1, p: 1 });
+});
+
+test('lineStagger: lines enter one after another and all are in place at the end', () => {
+  assert.equal(C.lineStagger(0, 3, 0), 0);
+  assert.ok(C.lineStagger(0, 3, 0.3) > C.lineStagger(1, 3, 0.3));
+  assert.equal(C.lineStagger(2, 3, 0.3), 0);
+  for (let i = 0; i < 3; i++) assert.equal(C.lineStagger(i, 3, 1), 1);
+});
+
+/* ---------------- captions: review fixes ---------------- */
+test('parseSubtitles: a bad numeric entity never breaks the import; hex entities decode; lone < > survive', () => {
+  assert.doesNotThrow(() => C.parseSubtitles('1\n00:00:01,000 --> 00:00:02,000\nA &#99999999; B &#55357; C\n'));
+  assert.equal(C.parseSubtitles('1\n00:00:01,000 --> 00:00:02,000\nA &#99999999; B\n')[0].text, 'A &#99999999; B');
+  assert.equal(C.cleanCueText('Cười &#x1F600; &#128512;'), 'Cười 😀 😀');
+  assert.equal(C.cleanCueText('I <3 you, 5 > 3'), 'I <3 you, 5 > 3');
+  assert.equal(C.cleanCueText('<i>nghiêng</i> <c.vang>màu</c> <v Lan>Lan nói</v> <00:00:01.500>tiếp'), 'nghiêng màu Lan nói tiếp');
+});
+
+test('parseSubtitles: a hand-edited .srt that lost the blank line between cues still gives two captions', () => {
+  const cs = C.parseSubtitles('1\n00:00:01,000 --> 00:00:02,000\nHello\n2\n00:00:03,000 --> 00:00:04,000\nWorld\n');
+  assert.deepEqual(cs, [{ start: 1, end: 2, text: 'Hello' }, { start: 3, end: 4, text: 'World' }]);
+  // VTT: NOTE blocks and cue identifiers are not caption text
+  assert.deepEqual(C.parseSubtitles('WEBVTT\n\nNOTE ghi chú\nnhiều dòng\n\nmo-dau\n00:01.000 --> 00:02.000 align:start\n<v Bob>Hi</v>\n'), [{ start: 1, end: 2, text: 'Hi' }]);
+});
+
+test('cueAt: a long caption under several short ones keeps showing until it ends', () => {
+  const cs = [{ start: 0, end: 10 }, ...[1, 2, 3, 4, 5].map((t) => ({ start: t, end: t + 0.5 }))];
+  assert.equal(C.cueAt(cs, 5.2), 5); // the newest wins while it shows
+  assert.equal(C.cueAt(cs, 5.7), 0); // then the long one again (it vanished before)
+  assert.equal(C.cueAt(cs, 9.9), 0);
+  assert.equal(C.cueAt(cs, 10.1), -1);
+});
+
+test('captionTopLayers: off the art / visualizer / bar when there is room, else over the visualizer, never over the title', () => {
+  const r = { x: 0, y: 100, w: 600, h: 900 }; // safe box 100…1000
+  const title = [700, 780], vis = [800, 900], bar = [960, 1000];
+  const L = (art) => [[title, art, vis, bar], [title, art, bar], [title, bar], [title]];
+  // room between the art and the title (600…700): the first layer wins — nothing is covered
+  assert.equal(C.captionTopLayers(r, 80, L([100, 600]), 0), 620);
+  // no gap anywhere for 80 px → the 2nd layer lets it sit over the visualizer, just above the time bar
+  assert.equal(C.captionTopLayers(r, 80, L([100, 650]), 0), 880);
+  // with room under the visualizer, the first layer wins
+  assert.equal(C.captionTopLayers(r, 40, [[title, [100, 650], vis, bar], [title]], 0), 920); // 40 px fits under the visualizer
+  assert.equal(C.captionSpot(r, 2000, []), null);
+});
+
+test('srtLooksClipRelative: the app\'s own .srt (times from the clip start) is recognised when the clip starts later', () => {
+  assert.equal(C.srtLooksClipRelative([{ start: 0.5, end: 1.5 }], 1, 10), true);
+  assert.equal(C.srtLooksClipRelative([{ start: 0.5, end: 1.5 }], 0, 10), false); // same thing either way
+  assert.equal(C.srtLooksClipRelative([{ start: 12, end: 14 }], 10, 20), false); // song times inside the clip
+  assert.equal(C.srtLooksClipRelative([{ start: 0.5, end: 30 }], 1, 10), false); // longer than the clip: a song file
+});
+
+test('checkFileSize: subtitles are limited to 2 MB, and the message says "phụ đề"', () => {
+  assert.equal(C.checkFileSize({ name: 'a.srt', size: 1e6 }, 'subtitle'), null);
+  assert.match(C.checkFileSize({ name: 'a.srt', size: 3e6 }, 'subtitle'), /phụ đề/);
+});
+
+test('parseSeconds: "2,5" is 2.5 s (Vietnamese comma), also "2.5", "1:15,3", "75"; junk → NaN', () => {
+  assert.equal(C.parseSeconds('2,5'), 2.5);
+  assert.equal(C.parseSeconds('2.5'), 2.5);
+  assert.equal(C.parseSeconds('1:15,3'), 75.3);
+  assert.equal(C.parseSeconds(' 75 '), 75);
+  assert.ok(Number.isNaN(C.parseSeconds('')));
+  assert.ok(Number.isNaN(C.parseSeconds('abc')));
+  assert.deepEqual(C.reframeSegment('1,5', '2,5', 10), { start: 1.5, end: 2.5, error: null }); // not 15 → 25
+});
+
+test('loudnessStream: chunk by chunk gives exactly the whole-buffer index (no big buffer needed)', () => {
+  const sr = 8000, n = sr * 7, L = new Float32Array(n), R = new Float32Array(n);
+  for (let i = 0; i < n; i++) { L[i] = 0.3 * Math.sin(i / 7) * (i > sr * 2 ? 1 : 0.2); R[i] = 0.25 * Math.sin(i / 11); }
+  const whole = C.loudnessIndex([L, R], sr); whole.step();
+  const st = C.loudnessStream(sr, 2);
+  for (let p = 0; p < n; p += 1237) st.push([L.subarray(p, Math.min(n, p + 1237)), R.subarray(p, Math.min(n, p + 1237))]);
+  const a = C.loudnessRange(whole, 0.5, 6.5), b = C.loudnessRange(st, 0.5, 6.5);
+  assert.ok(Math.abs(a.lufs - b.lufs) < 1e-6, `${a.lufs} vs ${b.lufs}`);
+  assert.equal(a.peak, b.peak);
+  assert.equal(st.len, n);
+});

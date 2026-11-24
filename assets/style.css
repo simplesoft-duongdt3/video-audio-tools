@@ -388,3 +388,39 @@ label:has(> select[id$="Loud"]) { flex-basis: 240px; }
 /* contrast ≥ 4.5:1: white text sits on a deeper pink (#fe2c55 + white was 3.68:1); the bright pink stays for accents */
 :root { --accent-strong: #d81b48; }
 button.primary, .tabs button.active, .shell > .tabs button.active, .skip { background: var(--accent-strong); border-color: var(--accent-strong); color: #fff; }
+
+/* ---------- Text video: slide list + tap-to-sync ---------- */
+.slide-list { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 260px; overflow-y: auto; }
+.slide-item {
+  width: 100%; min-height: 44px; display: grid; grid-template-columns: 30px 1fr; grid-template-rows: auto auto; column-gap: 8px;
+  text-align: left; padding: 6px 10px; background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; color: var(--text);
+}
+.slide-item .si-num { grid-row: 1 / 3; align-self: center; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--line); font-weight: 700; font-size: 0.85rem; }
+.slide-item .si-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.9rem; }
+.slide-item .si-time { font-size: 0.8rem; color: var(--muted); }
+.slide-item.active { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.slide-item.warn .si-time { color: #ffb020; }
+.tap-big { min-height: 64px; font-size: 1.1rem; flex: 1 1 100%; touch-action: manipulation; user-select: none; -webkit-user-select: none; }
+@media (max-width: 760px) {
+  /* while recording, the tap row is pinned above the action bar: scrolling never takes it off screen
+     (sticky could not: the button could not leave its short row, and sticky-bottom does not stop it leaving the top) */
+  .tv-recording #tvTapRow { position: fixed; left: 12px; right: 12px; bottom: calc(76px + env(safe-area-inset-bottom)); z-index: 30; background: var(--panel); padding: 6px; border-radius: 12px; box-shadow: 0 -4px 16px rgba(0,0,0,.5); }
+}
+
+/* ---------- captions (phụ đề) ---------- */
+details.caps-wrap > summary { color: var(--text); font-weight: 600; }
+.caps button { min-height: 44px; }
+.caps textarea { min-height: 96px; }
+.cap-tap { margin: 8px 0; padding: 10px; background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; }
+.cap-now { margin: 0 0 8px; font-weight: 600; min-height: 1.4em; }
+.cap-hold { width: 100%; min-height: 72px; font-size: 1.05rem; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.cap-hold.on { background: #ffe14d; border-color: #ffe14d; color: #111; }
+.cap-list { max-height: 9.5em; overflow-y: auto; margin: 4px 0 10px; padding-left: 2.2em; font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+.cap-list li { margin: 2px 0; overflow-wrap: anywhere; }
+.cap-list li.off { color: var(--muted); }
+
+/* Cắt & đổi khung video: the source <video> is only a frame source (drawn into the preview canvas). It stays
+   "rendered" but invisible: iPhone Safari does not decode frames of a display:none video. */
+.rf-src { position: absolute; left: 0; top: 0; width: 2px; height: 2px; opacity: 0; pointer-events: none; }
+.rf-canvas.rf-drag { cursor: grab; touch-action: pan-y; } /* JS picks pan-x / pan-y by the drag axis */
+.rf-canvas.rf-drag:active { cursor: grabbing; }

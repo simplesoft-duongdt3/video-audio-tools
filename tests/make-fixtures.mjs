@@ -17,6 +17,11 @@ ff('-i', 'tone.wav', '-c:a', 'libopus', '-b:a', '64k', 'tone.ogg');
 ff('-i', 'tone.wav', '-c:a', 'flac', 'tone.flac');
 // A video file whose sound track should be usable as the audio source.
 ff('-f', 'lavfi', '-i', 'testsrc=size=320x240:rate=15:duration=3', '-i', 'tone.wav', '-shortest', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', 'clip.mp4');
+// 16:9, 4 s: red | green | blue thirds (which part a 9:16 crop kept is readable from pixels) + a quiet 330 Hz tone (the sine source is 1/8 full scale)
+// (about −30 LUFS, so loudness normalisation must raise it).
+ff('-f', 'lavfi', '-i', 'color=c=red:s=640x360:r=30:d=4,drawbox=x=213:y=0:w=214:h=360:color=lime:t=fill,drawbox=x=427:y=0:w=213:h=360:color=blue:t=fill',
+  '-f', 'lavfi', '-i', 'sine=frequency=330:duration=4:sample_rate=48000,volume=0.32', '-ac', '2', '-shortest',
+  '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-c:a', 'aac', '-b:a', '96k', 'wide.mp4');
 ff('-f', 'lavfi', '-i', 'testsrc2=size=400x300:duration=1', '-frames:v', '1', '-q:v', '3', 'photo.jpg');
 ff('-f', 'lavfi', '-i', 'testsrc2=size=300x200:duration=1', '-frames:v', '1', 'photo.png');
 writeFileSync(join(dir, 'notaudio.txt'), 'this is not audio');

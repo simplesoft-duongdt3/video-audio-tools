@@ -179,6 +179,54 @@ const SelfTest = (() => {
         return `${w}×${h}, ${formatBytes(r.blob.size)}, chất lượng ${Math.round(r.q * 100)}%`;
       } finally { $('thSize').value = prev; }
     }, 'required'],
+    ['Text video: chuyển slide đúng nhịp trống & tô từ khoá', async () => {
+      // a 12 s "song" with a kick every 0.5 s: 4 slides must change ON kicks (this phone's float maths)
+      const sr = 22050, n = 12 * sr, d = new Float32Array(n);
+      for (let t = 0.3; t < 12; t += 0.5) {
+        const a = Math.round(t * sr);
+        for (let j = 0; j < 0.18 * sr && a + j < n; j++) d[a + j] += 0.9 * Math.exp(-j / (0.05 * sr)) * Math.sin((2 * Math.PI * 55 * j) / sr);
+      }
+      const t0 = performance.now();
+      const onsets = Core.bassOnsets([d], sr);
+      const p = Core.slidePlan({ n: 4, mode: 'beat', audioDur: 12, onsets });
+      const ms = performance.now() - t0;
+      if (p.snapped !== 3) throw new Error(`chỉ ${p.snapped}/3 lần chuyển rơi vào nhịp (${p.starts.map((x) => x.toFixed(2))})`);
+      const off = p.starts.slice(1).map((t) => Math.abs(((t - 0.3) / 0.5) - Math.round((t - 0.3) / 0.5)) * 0.5);
+      if (Math.max(...off) > 0.07) throw new Error(`lệch nhịp ${Math.max(...off).toFixed(2)}s`);
+      // *keyword* → a box in the highlight colour
+      const c = document.createElement('canvas'); c.width = 540; c.height = 960;
+      const x = c.getContext('2d');
+      TextVideo.drawSlide(x, 540, 960, 'Kiếm tiền *online*', { ...TextVideo.opts(), bgMode: 'color', bgColor: '#000000', hiColor: '#00ff00', hook: '', handle: '', anim: 'none' });
+      const px = x.getImageData(0, 0, 540, 960).data;
+      let green = 0;
+      for (let i = 0; i < px.length; i += 8) if (px[i + 1] > 200 && px[i] < 60 && px[i + 2] < 60) green++;
+      if (green < 300) throw new Error('không thấy hộp tô từ khoá');
+      return `nhịp lệch ≤ ${(Math.max(...off) * 1000).toFixed(0)} ms, đo nhịp 12 s mất ${ms.toFixed(0)} ms`;
+    }, 'required'],
+    ['Text video: mọi mẫu & hiệu ứng chữ vẽ đúng trên máy này', async () => {
+      // every template draws something of its own; every effect animates and ends on the finished slide;
+      // moving backgrounds are the same at the same moment (what you preview is what you export)
+      const W = 216, H = 384, o = { ...TextVideo.opts(), bgMode: 'tpl', hook: '', handle: '', counter: false };
+      const shot = (id, text, extra, a = 1, time = 0) => {
+        const c = document.createElement('canvas'); c.width = W; c.height = H;
+        TextVideo.drawTemplate(id, c.getContext('2d'), W, H, text, { ...o, ...extra }, a, time);
+        return c.toDataURL();
+      };
+      const t0 = performance.now(), seen = new Set();
+      const tpls = TextVideo.templates();
+      for (const t of tpls) {
+        const s = shot(t.id, 'Xin chào *TikTok*', { anim: 'none' });
+        if (seen.has(s)) throw new Error(`mẫu "${t.id}" giống hệt mẫu khác`);
+        seen.add(s);
+        if (t.moving && shot(t.id, 'A', {}, 1, 1.7) !== shot(t.id, 'A', {}, 1, 1.7)) throw new Error(`nền "${t.id}" không ổn định theo thời gian`);
+      }
+      const done = shot('classic', 'Mỗi ngày đọc mười trang sách', { anim: 'none' });
+      for (const anim of ['pop', 'fade', 'slide', 'type', 'word', 'wordpop', 'karaoke', 'zoom', 'rise', 'glitch']) {
+        if (shot('classic', 'Mỗi ngày đọc mười trang sách', { anim }, 0.5) === done) throw new Error(`hiệu ứng "${anim}" không chuyển động`);
+        if (shot('classic', 'Mỗi ngày đọc mười trang sách', { anim }, 1) !== done) throw new Error(`hiệu ứng "${anim}" không dừng đúng slide`);
+      }
+      return `${tpls.length} mẫu, 10 hiệu ứng, ${Math.round(performance.now() - t0)} ms`;
+    }, 'required'],
     ['Chia sẻ file (lưu vào Ảnh / gửi TikTok)', async () => {
       if (!canShareFiles) throw new Error('không có — dùng nút Tải');
       return 'OK';

@@ -13,7 +13,7 @@ import { uiHash } from './ui-hash.mjs';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
 const { chromium, devices } = require('@playwright/test');
-const PORT = 8792;
+const PORT = +process.env.HELP_PORT || 8792; // HELP_PORT: run beside another checkout's server
 const URL = `http://127.0.0.1:${PORT}/index.html`;
 
 /** A ~20 s music-like WAV (chords + beat) so the waveform in screenshots looks like a real song. */
@@ -186,12 +186,26 @@ async function main() {
 
   // --- text + music → video ---
   await go('textvideo');
+  await page.fill('#tvHook', '3 mẹo đọc sách mỗi ngày');
+  // set directly: on the phone viewport the sticky preview strip sits over these until scrolled
+  await page.locator('#tvCounter').evaluate((e) => { e.checked = true; e.dispatchEvent(new Event('input', { bubbles: true })); });
+  await page.locator('#tvSlides button[data-k="1"]').evaluate((e) => e.click());
+  await scrollTo('#tvText');
+  await shot('tv-text', [['#tvText', 1], ['#tvHook', 2], ['#tvCounter', 3]]);
+  await scrollTo('#tvSlides');
+  await shot('tv-slides', [['#tvSlides', 1]]);
   await scrollTo('#tvTemplates');
-  await shot('tv-text', [['#tvTemplates .chips', 1], ['#tvTemplates .templates', 2]]);
-  await page.click('#tvTemplates [data-tpl=romance]');
-  await page.locator('#tvScrub').evaluate((el) => { el.value = 1; el.dispatchEvent(new Event('input', { bubbles: true })); });
+  await page.locator('#tvTemplates .chips button:text-is("Chuyển động")').evaluate((e) => { e.click(); e.parentElement.scrollLeft = e.offsetLeft - 40; });
+  await shot('tv-style', [['#tvTemplates .chips', 1], ['#tvTemplates .templates', 2]]);
+  await page.locator('#tvTemplates .chips button:text-is("Tất cả")').evaluate((e) => e.click());
+  await page.locator('#tvTemplates [data-tpl=romance]').evaluate((e) => e.click());
+  await page.setInputFiles('#tvAudio', song);
+  await page.waitForSelector('#tvAudioInfo button');
+  await page.selectOption('#tvSync', 'tap');
   await scrollTo('.drop[data-input=tvAudio]');
-  await shot('tv-options', [['.drop[data-input=tvAudio]', 1], ['#tvRender', 2], ['#tvLoud', 3]]);
+  await shot('tv-sync', [['.drop[data-input=tvAudio]', 1], ['#tvStart', 2], ['#tvSync', 3], ['#tvTapStart', 4]]);
+  await scrollTo('#tvLoud');
+  await shot('tv-options', [['#tvLoud', 1], ['#tvRender', 2], ['#tvZip', 3]]);
 
   // --- music → video ---
   await go('audiovideo');
@@ -246,6 +260,28 @@ async function main() {
   await scrollTo('#avTemplates');
   await shot('mine', [['#avTemplates [data-role=save-template]', 1], ['#avTemplates .tcard:has([data-tpl^="my-"])', 2]]);
 
+  // --- captions (Audio → Video) ---
+  await go('audiovideo');
+  await page.setInputFiles('#avAudio', song);
+  await page.waitForSelector('#avTrim:not([hidden])');
+  await page.fill('#avTitle', 'Chiều mưa Sài Gòn');
+  await page.evaluate(() => { document.getElementById('avCapsBox').open = true; });
+  await page.fill('#avCapText', 'Chiều nay trời đổ mưa\nPhố xá bỗng chậm lại\nMình ngồi nghe bài này');
+  await page.waitForTimeout(400);
+  await scrollTo('#avCapsBox');
+  await shot('caps-input', [['.drop[data-input=avCapFile]', 1], ['#avCapText', 2], ['#avCapTap', 3]]);
+  await page.click('#avCapTap');
+  const hold = page.locator('#avCapHold');
+  await hold.dispatchEvent('pointerdown', { pointerId: 1 });
+  await page.waitForTimeout(1500);
+  await hold.dispatchEvent('pointerup', { pointerId: 1 });
+  await page.waitForTimeout(300);
+  await scrollTo('#avCapTapBox');
+  await shot('caps-tap', [['#avCapHold', 1], ['#avCapList', 2]]);
+  await page.click('#avCapStop');
+  await scrollTo('#avCapSize');
+  await shot('caps-style', [['#avCapSize', 1], ['#avCapShift', 2], ['#avCapHi', 3], ['#avCapSrt', 4]]);
+
   // --- loudness + safe zones (Audio → Video) ---
   await go('audiovideo');
   await page.setInputFiles('#avAudio', song);
@@ -283,6 +319,24 @@ async function main() {
   await page.waitForFunction(() => /LUFS/.test(document.getElementById('exLoudInfo').textContent));
   await scrollTo('.drop[data-input=exFile]');
   await shot('extract', [['.drop[data-input=exFile]', 1], ['#exTrim .trim-wave', 2], ['#exLoud', 3], ['#exRun', 4]]);
+
+  // --- reframe a wide video (16:9 → 9:16) ---
+  await go('reframe');
+  await page.setInputFiles('#rfFile', join(ROOT, 'tests', 'fixtures', 'wide.mp4'));
+  await page.waitForFunction(() => /fps/.test(document.getElementById('rfInfo').textContent));
+  await page.fill('#rfStart', '0.5');
+  await page.fill('#rfEnd', '3.5');
+  await page.waitForTimeout(600);
+  await scrollTo('.drop[data-input=rfFile]');
+  await shot('reframe', [['.drop[data-input=rfFile]', 1], ['#rfStart', 2], ['#rfSetStart', 3]]);
+  await page.evaluate(() => { const r = document.getElementById('rfPos'); r.value = 20; r.dispatchEvent(new Event('input', { bubbles: true })); });
+  await page.waitForTimeout(400);
+  await scrollTo('#rfFrame');
+  await shot('reframe-frame', [['#rfFrame', 1], ['#rfFit', 2], ['#rfPos', 3], ['#rfCanvas', 4]]);
+  await page.click('#rfRender');
+  await page.waitForSelector('#rfOut .outbox', { timeout: 120000 });
+  await page.waitForTimeout(1200); // the page scrolls to the result
+  await shot('reframe-done', [['#rfOut [data-a=dl]', 1], ['#rfOut [data-a=share]', 2]]);
 
   // --- photo tools ---
   await go('convert');
@@ -369,7 +423,7 @@ function page_(s) {
 </header>
 
 <nav class="toc" aria-label="Mục lục">
-  <a href="#bat-dau">1. Bắt đầu</a><a href="#nhac">2. Chuẩn bị nhạc</a><a href="#anh-video">3. Ảnh + nhạc</a><a href="#chu-video">4. Chữ + nhạc</a><a href="#nhac-video">5. Chỉ có nhạc</a><a href="#am-luong">6. Âm lượng &amp; vùng bị che</a><a href="#anh-bia">7. Ảnh bìa &amp; caption</a><a href="#tach-am">8. Tách âm thanh</a><a href="#luu">9. Lưu &amp; đăng TikTok</a><a href="#mau">10. Mẫu của tôi</a><a href="#anh">11. Sửa ảnh</a><a href="#loi">12. Gặp lỗi?</a>
+  <a href="#bat-dau">1. Bắt đầu</a><a href="#nhac">2. Chuẩn bị nhạc</a><a href="#anh-video">3. Ảnh + nhạc</a><a href="#chu-video">4. Chữ + nhạc</a><a href="#nhac-video">5. Chỉ có nhạc &amp; phụ đề</a><a href="#am-luong">6. Âm lượng &amp; vùng bị che</a><a href="#anh-bia">7. Ảnh bìa &amp; caption</a><a href="#tach-am">8. Tách âm thanh</a><a href="#doi-khung">9. Video ngang → dọc</a><a href="#luu">10. Lưu &amp; đăng TikTok</a><a href="#mau">11. Mẫu của tôi</a><a href="#anh">12. Sửa ảnh</a><a href="#loi">13. Gặp lỗi?</a>
 </nav>
 
 <main>
@@ -378,7 +432,7 @@ function page_(s) {
   <ol>
     <li>Mở trang bằng <b>Safari</b> (Chrome trên iPhone cũng dùng được).</li>
     <li>Để mở nhanh như một app: bấm nút <b>Chia sẻ</b> <kbd>⬆︎</kbd> ở thanh dưới Safari → <b>Thêm vào MH chính</b> → <b>Thêm</b>.</li>
-    <li>Chọn công cụ ở thanh trên cùng <span class="n">1</span> — vuốt ngang để thấy hết 8 công cụ, xếp theo nhóm: <b>Làm video</b>, <b>Đăng bài</b> (ảnh bìa, caption, tách âm thanh), <b>Ảnh</b>. Trên máy tính, các công cụ nằm ở cột bên trái.</li>
+    <li>Chọn công cụ ở thanh trên cùng <span class="n">1</span> — vuốt ngang để thấy hết 9 công cụ, xếp theo nhóm: <b>Làm video</b> (gồm cả đổi video ngang thành dọc), <b>Đăng bài</b> (ảnh bìa, caption, tách âm thanh), <b>Ảnh</b>. Trên máy tính, các công cụ nằm ở cột bên trái.</li>
     <li>Nút <b>Xem thử</b> / <b>Xuất video</b> luôn nằm ở đáy màn hình khi bạn cuộn xuống chỉnh — không cần cuộn tìm.</li>
     <li>Khung <b>xem trước</b> <span class="n">2</span> luôn nằm phía trên khi bạn cuộn xuống chỉnh, để thấy ngay thay đổi. Bấm <kbd>⤢</kbd> ở góc để phóng to.</li>
   </ol>
@@ -418,6 +472,7 @@ function page_(s) {
   <h3>Bước 3 — Chọn đoạn nhạc</h3>
   <p>Sau khi chọn nhạc, sóng nhạc hiện ra <span class="n">1</span>: <b>kéo 2 tay cầm</b> để chọn đoạn, hoặc <b>chạm</b> vào chỗ khác để dời đoạn tới đó. Bấm <b>Nghe đoạn này</b> <span class="n">2</span> để nghe thử.</p>
   ${fig(s['iv-trim'], 'Chọn đoạn nhạc bằng sóng nhạc (1), nghe thử (2)')}
+  <p>Muốn có <b>phụ đề</b> chạy theo lời? Mở mục <b>💬 Phụ đề trên video</b> — cách làm giống tab Audio → Video, xem <a href="#phu-de">mục Phụ đề</a>.</p>
   <h3>Bước 4 — Xem thử và tạo video</h3>
   <p>Bấm <b>Xem thử</b> <span class="n">1</span> để xem kèm nhạc, rồi <b>Xuất video</b> <span class="n">2</span>. Dòng <b>Ước tính</b> <span class="n">3</span> cho biết dung lượng và thời gian. Đang xuất có thể bấm <b>Huỷ</b>.</p>
   ${fig(s['iv-export'], 'Xem thử (1), xuất video (2), ước tính (3)')}
@@ -426,17 +481,35 @@ function page_(s) {
 <section id="chu-video">
   <h2>4. Chữ + nhạc → video</h2>
   <p>Tab <b>🔤 Text + Audio → Video</b>. Mỗi đoạn văn (cách nhau bởi <b>một dòng trống</b>) là một slide.</p>
+  <h3>Nội dung</h3>
   <ol>
-    <li>Gõ hoặc dán nội dung vào ô <b>Nội dung</b> ở đầu trang.</li>
-    <li>Lọc mẫu theo nhóm <span class="n">1</span> (Trích dẫn, Bài học, Tin tức, Bán hàng…) rồi vuốt hàng mẫu và chạm để chọn <span class="n">2</span>. Kéo thanh <b>Xem slide</b> dưới khung xem trước để xem từng slide.</li>
+    <li>Gõ hoặc dán nội dung vào ô <b>Nội dung</b> <span class="n">1</span>. Đặt từ quan trọng giữa hai dấu sao, ví dụ <b>*10 trang sách*</b>, để từ đó được tô trong một hộp màu (đổi màu ở ô <b>Màu tô từ khoá</b>).</li>
+    <li>Muốn có một câu giữ người xem ở lại từ giây đầu, gõ vào ô <b>Câu mở đầu cố định</b> <span class="n">2</span>. Câu này hiện ở đầu khung suốt cả video.</li>
+    <li>Bật <b>Đánh số slide</b> <span class="n">3</span> để video hiện "2/5": hợp với video dạng danh sách mẹo.</li>
   </ol>
-  ${fig(s['tv-text'], 'Nhóm mẫu (1) và hàng mẫu (2)')}
+  ${fig(s['tv-text'], 'Nội dung (1), câu mở đầu (2), đánh số slide (3)')}
+  <p>Bên dưới là <b>Danh sách slide</b> <span class="n">1</span>: mỗi dòng ghi slide hiện từ giây nào đến giây nào. Chạm một dòng để xem slide đó ở khung xem trước. Dòng có <b>⚠️</b> là slide hiện quá nhanh, người xem không kịp đọc: hãy rút ngắn chữ hoặc tăng thời gian.</p>
+  ${fig(s['tv-slides'], 'Danh sách slide (1)')}
+  <h3>Kiểu chữ</h3>
+  <p>Có 36 mẫu. Lọc theo nhóm <span class="n">1</span> (Chuyển động, Retro, Kể chuyện, Câu đố, Top list, Tin nhắn…) rồi vuốt hàng mẫu và chạm để chọn <span class="n">2</span>. Mỗi mẫu tự chọn sẵn một <b>Hiệu ứng chữ</b> hợp với nó. Muốn đổi thì chọn ở ô <b>Hiệu ứng chữ</b> bên dưới, ví dụ <b>Karaoke</b> (các từ sáng dần theo nhạc) hoặc <b>Từng từ bật to</b> (kiểu phụ đề TikTok). Nhóm <b>Chuyển động</b> có nền tự chuyển động suốt video. Chữ trên khung dọc 9:16 luôn nằm ngoài vùng bị nút và caption của TikTok che.</p>
+  ${fig(s['tv-style'], 'Nhóm mẫu (1) và hàng mẫu (2)')}
+  <h3>Nhạc và lúc chuyển slide</h3>
   <ol>
-    <li>Chọn nhạc <span class="n">1</span> (không bắt buộc) — thời lượng nhạc được chia đều cho các slide.</li>
-    <li>Chọn mức <b>Âm lượng</b> <span class="n">3</span> (xem mục 6), rồi bấm <b>Xuất video</b> <span class="n">2</span> — nút này luôn nằm ở đáy màn hình.</li>
-    <li>Muốn đăng dạng ảnh (carousel): bấm <b>Tải ảnh slide này (PNG)</b> hoặc <b>Tải tất cả slide (.zip)</b> ngay dưới nút xuất.</li>
+    <li>Chọn nhạc <span class="n">1</span> (không bắt buộc). Muốn bắt đầu từ đoạn điệp khúc thì gõ số giây vào <b>Bắt đầu nhạc từ</b> <span class="n">2</span>.</li>
+    <li>Chọn cách <b>Chuyển slide</b> <span class="n">3</span>:
+      <ul>
+        <li><b>Chia đều theo nhạc</b>: mỗi slide dài bằng nhau.</li>
+        <li><b>Khớp nhịp trống</b>: mỗi lần chuyển slide rơi đúng tiếng trống gần nhất. Dòng chữ bên dưới cho biết bao nhiêu lần đã khớp.</li>
+        <li><b>Theo lúc tôi bấm</b>: bấm <b>🎯 Nghe &amp; bấm</b> <span class="n">4</span>. Nhạc phát, rồi mỗi khi muốn sang slide mới thì chạm nút lớn <b>Chuyển slide</b>. Trên máy tính có thể nhấn phím cách. Muốn ghi lại thì bấm 🎯 lần nữa.</li>
+      </ul>
+    </li>
   </ol>
-  ${fig(s['tv-options'], 'Chọn nhạc (1), xuất video (2), âm lượng (3)')}
+  ${fig(s['tv-sync'], 'Chọn nhạc (1), bắt đầu từ (2), cách chuyển slide (3), nghe & bấm (4)')}
+  <ol>
+    <li>Chọn mức <b>Âm lượng</b> <span class="n">1</span> (xem mục 6), rồi bấm <b>Xuất video</b> <span class="n">2</span>. Nút này luôn nằm ở đáy màn hình.</li>
+    <li>Muốn đăng dạng ảnh (carousel): bấm <b>Tải tất cả slide (.zip)</b> <span class="n">3</span> hoặc <b>Tải ảnh slide này (PNG)</b>.</li>
+  </ol>
+  ${fig(s['tv-options'], 'Âm lượng (1), xuất video (2), tải ảnh từng slide (3)')}
 </section>
 
 <section id="nhac-video">
@@ -487,6 +560,19 @@ function page_(s) {
   </ol>
   ${fig(s.silence, 'Đoạn im lặng tô đỏ (1), danh sách để chọn (2), nút bỏ (3)')}
   <div class="tip">💡 Không có gì bị cắt nếu bạn không bấm nút bỏ. Bài hát liền mạch thường không có đoạn im lặng nào — trang sẽ báo “Không thấy”.</div>
+  <h3 id="phu-de">💬 Phụ đề (chữ chạy theo lời)</h3>
+  <p>Mở mục <b>💬 Phụ đề trên video</b> (có ở tab Audio → Video và Ảnh + Audio). Trang <b>không tự nghe ra lời</b> — bạn đưa lời vào theo một trong hai cách:</p>
+  <ol>
+    <li><b>Đã có file phụ đề</b> (.srt / .vtt, ví dụ tải từ CapCut hoặc YouTube): bấm <b>📄 Nhập file phụ đề</b> <span class="n">1</span>. Giờ của từng câu được giữ nguyên theo bài gốc.</li>
+    <li><b>Chưa có</b>: dán lời / kịch bản vào ô <span class="n">2</span>, <b>mỗi dòng là một câu</b>. Ngay lập tức các câu được chia đều theo đoạn nhạc để xem thử.</li>
+    <li>Muốn chữ khớp đúng lời: bấm <b>👆 Bắt nhịp theo nhạc</b> <span class="n">3</span>.</li>
+  </ol>
+  ${fig(s['caps-input'], 'Nhập file (1), dán lời (2), bắt nhịp (3)')}
+  <p>Khi bắt nhịp, nhạc phát từ đầu đoạn đã chọn. <b>Nhấn giữ</b> nút lớn <span class="n">1</span> khi câu bắt đầu và <b>thả ra</b> khi câu hết, rồi giữ tiếp cho câu sau. Giờ của từng câu hiện trong danh sách <span class="n">2</span> và thành vạch vàng dưới sóng nhạc. Lỡ tay thì bấm Bắt nhịp lại.</p>
+  ${fig(s['caps-tap'], 'Nút giữ khi đang nói (1) và giờ từng câu (2)')}
+  <p>Chọn <b>cỡ chữ</b> <span class="n">1</span>. Chữ sớm hay trễ hơn lời một chút thì sửa ở <b>Lệch giờ</b> <span class="n">2</span> (số âm = hiện sớm hơn). <b>Tô vàng từng chữ đang nói</b> <span class="n">3</span> là kiểu phụ đề đang thịnh hành trên TikTok. Nút <b>⬇︎ Tải file .srt</b> <span class="n">4</span> cho file phụ đề khớp với video vừa xuất — tải lên YouTube để người xem bật/tắt được.</p>
+  ${fig(s['caps-style'], 'Cỡ chữ (1), lệch giờ (2), tô vàng từng chữ (3), tải .srt (4)')}
+  <div class="tip">💡 Phụ đề luôn nằm trong <b>vùng an toàn của cả TikTok, Reels và Shorts</b>, chữ trắng viền đen dễ đọc trên mọi nền. Đổi điểm bắt đầu đoạn nhạc hay bỏ đoạn im lặng thì chữ vẫn đi theo đúng lời. Xem thử và video xuất ra giống hệt nhau.</div>
 </section>
 
 <section id="am-luong">
@@ -535,8 +621,36 @@ function page_(s) {
   ${fig(s.extract, 'Chọn file (1), chọn đoạn (2), âm lượng (3), tách (4)')}
 </section>
 
+<section id="doi-khung">
+  <h2>9. Đổi video ngang thành video dọc (Shorts / TikTok)</h2>
+  <p>Tab <b>📐 Cắt &amp; đổi khung video</b>: lấy một đoạn hay trong video ngang 16:9 (quay bằng máy ảnh, video YouTube của bạn) và biến thành video dọc 9:16, vuông 1:1 hoặc 4:5. Video không rời khỏi máy.</p>
+  <ol>
+    <li>Chọn video <span class="n">1</span> (mp4 hoặc mov — trong app Ảnh hoặc Tệp).</li>
+    <li>Gõ <b>Bắt đầu</b> / <b>Kết thúc</b> (giây) <span class="n">2</span>, hoặc kéo thanh <b>Xem tại</b> tới chỗ muốn lấy rồi bấm <b>⏮ Bắt đầu từ chỗ đang xem</b> / <b>⏭ Kết thúc ở chỗ đang xem</b> <span class="n">3</span>. Để trống ô Kết thúc là lấy tới hết video.</li>
+  </ol>
+  ${fig(s.reframe, 'Chọn video (1), đoạn cần lấy (2), lấy thời điểm đang xem (3)')}
+  <ol start="3">
+    <li>Chọn <b>Khung</b> <span class="n">1</span>: <b>9:16</b> (dọc 1080×1920) cho TikTok / Reels / Shorts, <b>1:1</b> vuông, <b>4:5</b> Instagram, hoặc <b>Giữ khung gốc</b> (chỉ cắt đoạn).</li>
+    <li>Chọn <b>Cách đặt video</b> <span class="n">2</span>:
+      <ul>
+        <li><b>Cắt đầy khung</b>: video phủ kín màn hình, hai bên bị cắt bớt. Kéo thanh <b>Vị trí phần giữ lại</b> <span class="n">3</span> hoặc <b>kéo hình trong khung xem trước</b> <span class="n">4</span> sang trái / phải để giữ đúng người hoặc vật đang nói.</li>
+        <li><b>Nền mờ</b>: thu nhỏ để thấy trọn khung hình ngang, trên và dưới là chính video được làm mờ.</li>
+        <li><b>Nền màu</b>: như trên nhưng nền là một màu bạn chọn.</li>
+      </ul>
+    </li>
+    <li>Bấm <b>▶ Xem thử đoạn này</b> để xem và nghe trước. Bật <b>Vùng bị che</b> dưới khung xem trước để chắc phần quan trọng không nằm dưới nút của TikTok.</li>
+  </ol>
+  ${fig(s['reframe-frame'], 'Khung (1), cách đặt (2), vị trí phần giữ lại (3), kéo hình để chọn (4)')}
+  <ol start="6">
+    <li>Bấm <b>Xuất video</b> (luôn nằm ở đáy màn hình). Thanh tiến độ cho biết còn bao lâu; bấm <b>Huỷ</b> nếu muốn dừng. Âm lượng được đưa về chuẩn −14 LUFS như các tab khác (chọn <b>Giữ nguyên</b> nếu không muốn).</li>
+    <li>Video xong: bấm <b>Chia sẻ / Lưu vào Ảnh</b> <span class="n">2</span> → <b>Lưu video</b> (hoặc chọn TikTok để đăng luôn), hoặc <b>Tải video</b> <span class="n">1</span> để lưu vào Tệp.</li>
+  </ol>
+  ${fig(s['reframe-done'], 'Video đã xong: Tải video (1) hoặc Chia sẻ / Lưu vào Ảnh (2)')}
+  <p class="tip">💡 Video dài vài phút trên iPhone: giữ màn hình mở và ở lại trang tới khi xong. Video HEVC của iPhone mở được trên Safari; nếu máy tính báo không đọc được, mở trang bằng Safari hoặc chọn <b>Cài đặt › Camera › Định dạng › Tương thích nhất</b>.</p>
+</section>
+
 <section id="luu">
-  <h2>9. Lưu video vào Ảnh &amp; đăng TikTok</h2>
+  <h2>10. Lưu video vào Ảnh &amp; đăng TikTok</h2>
   ${fig(s['iv-done'], 'Video đã xong: Chia sẻ / Lưu vào Ảnh (1) hoặc Tải video (2)')}
   <ol>
     <li>Khi video xong, trang tự cuộn tới kết quả. Bấm <b>Chia sẻ / Lưu vào Ảnh</b> <span class="n">1</span> → chọn <b>Lưu video</b> — video vào thẳng app Ảnh.</li>
@@ -547,14 +661,14 @@ function page_(s) {
 </section>
 
 <section id="mau">
-  <h2>10. Mẫu của tôi</h2>
+  <h2>11. Mẫu của tôi</h2>
   <p>Đã chỉnh màu, font, @kênh vừa ý? Bấm <b>＋ Lưu thành mẫu của tôi</b> <span class="n">1</span>, đặt tên. Lần sau chỉ cần chạm vào mẫu đó <span class="n">2</span> (nhóm <b>Mẫu của tôi</b>). Bấm <kbd>×</kbd> để xoá.</p>
   ${fig(s.mine, 'Lưu mẫu (1), mẫu đã lưu (2)')}
   <div class="warn">Mẫu được lưu trong Safari trên chính iPhone này. Nếu xoá dữ liệu Safari hoặc lâu không mở trang, mẫu có thể mất. Thêm trang vào Màn hình chính giúp giữ lâu hơn.</div>
 </section>
 
 <section id="anh">
-  <h2>11. Sửa ảnh</h2>
+  <h2>12. Sửa ảnh</h2>
   <div class="two">
     <div>
       <h3>Chuyển định dạng &amp; nén</h3>
@@ -570,7 +684,7 @@ function page_(s) {
 </section>
 
 <section id="loi">
-  <h2>12. Gặp lỗi?</h2>
+  <h2>13. Gặp lỗi?</h2>
   <details><summary>Không chọn được bài hát</summary><p>Xem mục <a href="#nhac">2. Chuẩn bị nhạc</a>: lưu bài vào app Tệp trước. Bài trong Apple Music không dùng được.</p></details>
   <details><summary>Video tải về không có tiếng</summary><p>Video luôn được xuất với âm thanh AAC (nghe được trên mọi app). Kiểm tra nút gạt im lặng của iPhone. Nếu vẫn không có tiếng, chạy <b>Tự kiểm tra thiết bị</b> bên dưới và gửi kết quả cho chúng tôi.</p></details>
   <details><summary>Báo "Không tải được" / "Failed to download"</summary><p>Dùng <b>Chia sẻ → Lưu video</b> thay vì nút Tải. Với bài dài, chọn đoạn ngắn hơn hoặc khung 720p.</p></details>

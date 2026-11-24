@@ -318,17 +318,23 @@ document.querySelectorAll('input[type=file][data-audio]').forEach((inp) => {
   else inp.accept = 'audio/*,video/*,' + Core.AUDIO_EXT.map((e) => '.' + e).join(',');
 });
 
-/** Cheap, cross-browser blur (Safari has no ctx.filter): downscale then upscale. */
-function makeBlur(img, iw, ih, W, H, darken = 0.35) {
-  const small = makeCanvas(Math.max(8, W / 24), Math.max(8, H / 24));
+/**
+ * Cheap, cross-browser blur (Safari has no ctx.filter): downscale then upscale.
+ * reuse = {} keeps its two small canvases between calls (a video blurs every frame: no new canvas each time).
+ */
+function makeBlur(img, iw, ih, W, H, darken = 0.35, reuse = null) {
+  const sw = Math.max(8, Math.round(W / 24)), sh = Math.max(8, Math.round(H / 24));
+  const small = reuse && reuse.small && reuse.small.width === sw && reuse.small.height === sh ? reuse.small : makeCanvas(sw, sh);
   drawImageFit(small.getContext('2d'), img, iw, ih, 0, 0, small.width, small.height, 'cover');
-  const mid = makeCanvas(W / 6, H / 6);
+  const mw = Math.max(1, Math.round(W / 6)), mh = Math.max(1, Math.round(H / 6));
+  const mid = reuse && reuse.mid && reuse.mid.width === mw && reuse.mid.height === mh ? reuse.mid : makeCanvas(mw, mh);
   const m = mid.getContext('2d');
   m.imageSmoothingQuality = 'high';
   m.drawImage(small, 0, 0, mid.width, mid.height);
   m.fillStyle = `rgba(0,0,0,${darken})`;
   m.fillRect(0, 0, mid.width, mid.height);
-  small.width = small.height = 0;
+  if (reuse) Object.assign(reuse, { small, mid });
+  else small.width = small.height = 0;
   return mid;
 }
 
@@ -443,6 +449,12 @@ document.querySelectorAll('.split .preview').forEach((pv) => {
  * Measures only the chosen clip (cached per clip), shows "−22,8 LUFS → +8,8 dB" under the select,
  * and gain() is what the export (and the preview player) multiplies the sound by.
  */
+/** Empty a result box, first freeing the previous video / audio file it showed (each export held up to 80 MB). */
+function clearOut(el) {
+  el.querySelectorAll('video[src^="blob:"], audio[src^="blob:"]').forEach((m) => URL.revokeObjectURL(m.src));
+  el.innerHTML = '';
+}
+
 const Loudness = (() => {
   /** Yield to the event loop without timer clamping (background tabs clamp setTimeout to ≥ 1 s). */
   const yieldTask = (() => {
@@ -471,10 +483,10 @@ const Loudness = (() => {
   }
   /** → Promise<{ m, target, gain, db, limited }> for a clip, or null without audio. */
   async function compute(mode, c) {
-    if (!c || !c.audio) return null;
+    if (!c || (!c.audio && !c.index)) return null;
     const target = Core.LOUDNESS_TARGETS[mode];
     if (!target) return { m: null, target: 0, gain: 1, db: 0, limited: false }; // "off": nothing to measure
-    const idx = await job(c.audio, !!c.mono).ready;
+    const idx = c.index || (await job(c.audio, !!c.mono).ready); // c.index: measured while streaming (no buffer kept)
     const off = +c.offset || 0, dur = c.duration > 0 ? c.duration : c.audio.duration - off;
     const m = Core.loudnessRange(idx, off, off + dur);
     return { m, target, ...Core.normGain(m, target) };
