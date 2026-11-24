@@ -7,8 +7,8 @@ const AudioTrim = (() => {
   const round1 = (v) => Math.round(v * 10) / 10;
 
   /**
-   * onAudio(buffer): called when the user removes silences (new, shorter buffer) or undoes it (the original),
-   * so the tab exports exactly what the user chose.
+   * onAudio(buffer, cuts): called when the user removes silences (new, shorter buffer + the removed [{from, to}] of
+   * the original) or undoes it (the original, null), so the tab exports exactly what the user chose.
    */
   function mount({ box, startId, durId, onAudio = () => {} }) {
     const startEl = $(startId), durEl = $(durId);
@@ -52,6 +52,7 @@ const AudioTrim = (() => {
     let audio = null, channels = null, pk = null, pkN = 0, src = null, raf = 0;
     let original = null; // the decoded song as chosen; `audio` may be it with silences removed
     let found = []; // silences found in `original` (shown while choosing)
+    let marks = []; // captions [{start, end}] in the current song timeline: thin bars under the wave
     const sil = {
       scan: box.querySelector('[data-a=scan]'), res: box.querySelector('.sil-res'), sum: box.querySelector('.sil-sum'),
       sens: box.querySelector('[data-a=sens]'), list: box.querySelector('.sil-list'), cut: box.querySelector('[data-a=cut]'),
@@ -89,6 +90,10 @@ const AudioTrim = (() => {
         const bh = Math.max(2, pk[i] * (h - 10));
         ctx.fillStyle = t >= s && t <= e ? '#25f4ee' : 'rgba(255,255,255,0.28)';
         ctx.fillRect(i * step + (step - bw) / 2, (h - bh) / 2, bw, bh);
+      }
+      if (marks.length) {
+        ctx.fillStyle = '#ffe14d';
+        for (const m of marks) ctx.fillRect((m.start / d) * w, h - 5, Math.max(2, ((m.end - m.start) / d) * w - 1), 4);
       }
       const xs = (s / d) * w, xe = (e / d) * w;
       selEl.style.left = xs + 'px';
@@ -226,7 +231,7 @@ const AudioTrim = (() => {
       sil.scan.hidden = true;
       updateCut();
     }
-    function setCurrent(buf, keepToEnd) {
+    function setCurrent(buf, keepToEnd, cuts = null) {
       stop();
       audio = buf;
       channels = Array.from({ length: buf.numberOfChannels }, (_, i) => buf.getChannelData(i));
@@ -235,7 +240,7 @@ const AudioTrim = (() => {
       startEl.value = 0;
       if (keepToEnd) durEl.value = '';
       for (const el of [startEl, durEl]) el.dispatchEvent(new Event('input', { bubbles: true }));
-      onAudio(buf);
+      onAudio(buf, cuts);
       draw();
     }
     sil.scan.onclick = () => {
@@ -256,7 +261,7 @@ const AudioTrim = (() => {
       sil.done.hidden = false;
       sil.done.querySelector('span').textContent = `✂️ Đã bỏ ${cuts.length} đoạn im lặng (−${sec(removed)}) · còn ${formatTime(buf.duration)}`;
       found = [];
-      setCurrent(buf, true);
+      setCurrent(buf, true, cuts);
       toast(`Đã bỏ ${sec(removed)} im lặng`);
     };
     box.querySelector('[data-a=undo]').onclick = () => {
@@ -287,6 +292,8 @@ const AudioTrim = (() => {
       },
       stop,
       redraw: draw,
+      /** Caption times to show under the wave (current song timeline). */
+      setMarks(m) { marks = m || []; draw(); },
     };
   }
 

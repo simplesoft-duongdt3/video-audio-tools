@@ -66,7 +66,7 @@ test.describe('text + audio → video', () => {
     test.skip(!c.webcodecs && !c.recorder, NO_EXPORT);
     await page.click('#tvTemplates [data-tpl] >> nth=2');
     await page.setInputFiles('#tvAudio', fx('tone.mp3'));
-    await expect(page.locator('#tvAudioInfo')).toContainText('3 slide');
+    await expect(page.locator('#tvSlidesSum')).toContainText('3 slide · 0:03'); // per-slide timing now lives in the slide list
     await page.selectOption('#tvSizeSel', '720x1280');
     const dl = await renderAndDownload(page, 'tv', ti);
     expectVideo(dl.path, { width: 720, height: 1280, duration: 3, fast: c.webcodecs });
@@ -209,7 +209,7 @@ test.describe('export path robustness (TikTok stutter / slow export)', () => {
     const c = await caps(page);
     test.skip(!c.webcodecs, NO_EXPORT);
     await page.setInputFiles('#tvAudio', fx('tone.mp3'));
-    await expect(page.locator('#tvAudioInfo')).toContainText('3 slide');
+    await expect(page.locator('#tvSlidesSum')).toContainText('3 slide · 0:03'); // per-slide timing now lives in the slide list
     const dl = await renderAndDownload(page, 'tv', ti);
     const pts = execFileSync('ffprobe', ['-v', 'error', '-select_streams', 'v', '-show_entries', 'packet=pts_time', '-of', 'csv=p=0', dl.path])
       .toString().trim().split('\n').map(Number).sort((a, b) => a - b);

@@ -16,7 +16,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600;800&family=Montserrat:wght@700;900&family=Playfair+Display:ital,wght@0,700;1,700&family=Lobster&family=Roboto+Mono:wght@700&family=Lora:ital,wght@0,600;1,600&family=Noto+Serif:wght@600;800&family=Dancing+Script:wght@700&family=Baloo+2:wght@800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css" integrity="sha384-6LFfkTKLRlzFtgx8xsWyBdKGpcMMQTkv+dB7rAbugeJAu1Ym2q1Aji1cjHBG12Xh" crossorigin="anonymous">
-<link rel="stylesheet" href="assets/style.css?v=3a42a5c611">
+<link rel="stylesheet" href="assets/style.css?v=3c1a4e5218">
 
 </head>
 <body>
@@ -32,6 +32,7 @@
   <button data-tab="audiovideo" id="tabbtn-audiovideo" role="tab" aria-controls="tab-audiovideo" aria-selected="true" class="active">🎧 Audio → Video</button>
   <button data-tab="imgvideo" id="tabbtn-imgvideo" role="tab" aria-controls="tab-imgvideo" aria-selected="false">🖼️ Ảnh + Audio → Video</button>
   <button data-tab="textvideo" id="tabbtn-textvideo" role="tab" aria-controls="tab-textvideo" aria-selected="false">🔤 Text + Audio → Video</button>
+  <button data-tab="reframe" id="tabbtn-reframe" role="tab" aria-controls="tab-reframe" aria-selected="false">📐 Cắt &amp; đổi khung video</button>
   <span class="tab-group" aria-hidden="true">Đăng bài</span>
   <button data-tab="thumb" id="tabbtn-thumb" role="tab" aria-controls="tab-thumb" aria-selected="false">🪧 Ảnh bìa &amp; caption</button>
   <button data-tab="extract" id="tabbtn-extract" role="tab" aria-controls="tab-extract" aria-selected="false">🎵 Tách âm thanh</button>
@@ -216,6 +217,10 @@
         </div>
         <label>Độ mượt (khung hình/giây) <select id="ivFps"><option>24</option><option selected>30</option><option>60</option></select></label>
       </details>
+      <details class="adv caps-wrap" id="ivCapsBox">
+        <summary>💬 Phụ đề trên video (không bắt buộc)</summary>
+        <div id="ivCaps"></div>
+      </details>
       <label>🔊 Âm lượng
         <select id="ivLoud">
           <option value="social" selected>Chuẩn TikTok / YouTube (−14 LUFS)</option>
@@ -238,17 +243,25 @@
 <!-- ============ TEXT + AUDIO -> VIDEO ============ -->
 <section class="panel" id="tab-textvideo" role="tabpanel" aria-labelledby="tabbtn-textvideo">
   <h2>Text + Audio → Video / Ảnh</h2>
-  <p class="hint">Mỗi đoạn cách nhau bởi <b>một dòng trống</b> là một slide. Thời lượng audio được chia đều cho các slide (hoặc đặt số giây riêng).</p>
   <div class="split">
     <div class="controls">
-      <label>Nội dung
+      <div class="glabel step">1 · Nội dung</div>
+      <label>Nội dung — <b>dòng trống</b> = slide mới, <b>*dấu sao*</b> = tô từ khoá
         <textarea id="tvText" rows="7">Bạn có biết? 🤔
 
-Mỗi ngày chỉ cần đọc 10 trang sách, một năm bạn đọc được hơn 15 cuốn.
+Mỗi ngày chỉ cần đọc *10 trang sách*, một năm bạn đọc được hơn 15 cuốn.
 
-Bắt đầu từ hôm nay nhé! 📚</textarea>
+Bắt đầu từ *hôm nay* nhé! 📚</textarea>
       </label>
-      <div class="glabel">Mẫu</div>
+      <label>Câu mở đầu cố định (hook — hiện suốt video, không bắt buộc) <input type="text" id="tvHook" maxlength="80" placeholder="VD: 3 mẹo đọc sách mỗi ngày"></label>
+      <div class="row tight">
+        <label class="check"><input type="checkbox" id="tvCounter"> Đánh số slide (1/5)</label>
+        <label>Màu tô từ khoá <input type="color" id="tvHi" value="#ffd60a"></label>
+      </div>
+      <div class="glabel">Danh sách slide <span id="tvSlidesSum"></span></div>
+      <ol class="slide-list" id="tvSlides" aria-label="Danh sách slide — bấm để xem trước"></ol>
+
+      <div class="glabel step">2 · Kiểu chữ &amp; nền</div>
       <div class="tpl-picker" id="tvTemplates"></div>
       <div class="row tight">
         <label>Font
@@ -259,6 +272,9 @@ Bắt đầu từ hôm nay nhé! 📚</textarea>
             <option>Playfair Display</option>
             <option>Lobster</option>
             <option>Roboto Mono</option>
+            <option>Lora</option>
+            <option>Baloo 2</option>
+            <option>Dancing Script</option>
           </select>
         </label>
         <label>Cỡ chữ tối đa <input type="number" id="tvSize" value="96" min="20" max="240"></label>
@@ -274,6 +290,11 @@ Bắt đầu từ hôm nay nhé! 📚</textarea>
             <option value="slide">Trượt lên</option>
             <option value="type">Gõ chữ</option>
             <option value="word">Từng từ</option>
+            <option value="wordpop">Từng từ bật to</option>
+            <option value="karaoke">Karaoke (sáng dần từng từ)</option>
+            <option value="zoom">Thu nhỏ vào</option>
+            <option value="rise">Từng dòng trồi lên</option>
+            <option value="glitch">Glitch</option>
             <option value="none">Không</option>
           </select>
         </label>
@@ -290,16 +311,34 @@ Bắt đầu từ hôm nay nhé! 📚</textarea>
         <span>Chọn ảnh nền</span>
       </label>
       <div class="row tight">
-        <label>Tên / handle (góc dưới) <input type="text" id="tvHandle" placeholder="@yourname"></label>
+        <label>Tên / handle <input type="text" id="tvHandle" placeholder="@yourname"></label>
         <label>Khung hình <select id="tvSizeSel" class="size-select"></select></label>
       </div>
+
+      <div class="glabel step">3 · Nhạc &amp; nhịp chuyển slide</div>
       <label class="drop small" data-input="tvAudio">
         <input type="file" id="tvAudio" accept="audio/*,video/*" data-audio hidden>
         <span>🎵 Chọn audio (không bắt buộc)</span>
       </label>
       <div class="hint" id="tvAudioInfo"></div>
       <details class="hint warn ios-only" hidden><summary>📱 Không thấy bài hát trong app Nhạc?</summary>iPhone không cho trang web mở bài hát trong app <b>Nhạc (Music)</b> — chỉ chọn được từ <b>Tệp (Files)</b> hoặc video trong <b>Ảnh</b>. Cách đưa nhạc vào Tệp: tải mp3 bằng Safari (vào Tệp › Tải về) · Zalo/Messenger/Telegram: giữ file › Chia sẻ › <i>Lưu vào Tệp</i> · Ghi âm: ••• › <i>Lưu vào Tệp</i> · AirDrop từ máy tính. Nhạc Apple Music có DRM nên không dùng được.</details>
-      <label>Mỗi slide (giây) — để trống = tự chia theo nhạc <input type="number" id="tvSlideDur" min="0.5" step="0.5" placeholder="tự động" inputmode="decimal"></label>
+      <div class="row tight">
+        <label>Bắt đầu nhạc từ (giây) <input type="number" id="tvStart" value="0" min="0" step="0.5" inputmode="decimal"></label>
+        <label>Mỗi slide (giây) <input type="number" id="tvSlideDur" min="0.5" step="0.5" placeholder="tự động" inputmode="decimal"></label>
+      </div>
+      <div class="hint" id="tvDurHint"></div>
+      <label>Chuyển slide
+        <select id="tvSync">
+          <option value="even">Chia đều theo nhạc</option>
+          <option value="beat">Khớp nhịp trống (tự động)</option>
+          <option value="tap">Theo lúc tôi bấm khi nghe nhạc</option>
+        </select>
+      </label>
+      <div class="row tight" id="tvTapRow" hidden>
+        <button id="tvTapStart" type="button">🎯 Nghe &amp; bấm để chuyển slide</button>
+        <button id="tvTap" type="button" class="primary tap-big" hidden>Chuyển slide</button>
+      </div>
+      <div class="hint" id="tvSyncInfo" aria-live="polite"></div>
       <details class="adv">
         <summary>Nâng cao: độ mượt</summary>
         <label>Độ mượt (khung hình/giây) <select id="tvFps"><option>24</option><option selected>30</option><option>60</option></select></label>
@@ -323,7 +362,7 @@ Bắt đầu từ hôm nay nhé! 📚</textarea>
       <div class="progress" id="tvProg" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-label="Tiến độ xuất video" hidden><div></div><span></span></div>
       <div id="tvOut"></div>
     </div>
-    <div class="preview"><canvas id="tvCanvas" role="img" aria-label="Xem trước video"></canvas><label class="scrub">Xem slide <input type="range" id="tvScrub" min="0" max="0" value="0"></label></div>
+    <div class="preview"><canvas id="tvCanvas" role="img" aria-label="Xem trước video"></canvas></div>
   </div>
 </section>
 <!-- ============ AUDIO -> VIDEO ============ -->
@@ -435,6 +474,10 @@ Bắt đầu từ hôm nay nhé! 📚</textarea>
           <label>Độ dài (giây, trống = hết bài) <input type="number" id="avDur" min="0.5" step="0.1" inputmode="decimal"></label>
         </div>
         <label>Độ mượt (khung hình/giây) <select id="avFps"><option>24</option><option selected>30</option><option>60</option></select></label>
+      </details>
+      <details class="adv caps-wrap" id="avCapsBox">
+        <summary>💬 Phụ đề trên video (không bắt buộc)</summary>
+        <div id="avCaps"></div>
       </details>
       <label>🔊 Âm lượng
         <select id="avLoud">
@@ -569,6 +612,80 @@ Bắt đầu từ hôm nay nhé! 📚</textarea>
   <div id="exOut"></div>
 </section>
 
+<!-- ============ REFRAME VIDEO (16:9 → 9:16 …) ============ -->
+<section class="panel" id="tab-reframe" role="tabpanel" aria-labelledby="tabbtn-reframe">
+  <h2>Cắt &amp; đổi khung video</h2>
+  <p class="hint">Biến video ngang (YouTube, máy quay) thành video dọc <b>9:16</b> cho TikTok / Reels / Shorts, hoặc vuông 1:1, 4:5: chọn đoạn cần lấy, rồi cắt cho đầy khung (kéo để chọn phần giữ lại) hoặc thu nhỏ trên nền mờ / nền màu. Xuất MP4 (H.264 + AAC), file không rời khỏi máy.</p>
+  <div class="split">
+    <div class="controls">
+      <div class="glabel step">1 · Video</div>
+      <label class="drop small" data-input="rfFile">
+        <input type="file" id="rfFile" accept="video/*,.mp4,.mov,.m4v" data-kind="media" hidden>
+        <span>🎬 Chọn video (mp4, mov)</span>
+      </label>
+      <div class="hint" id="rfInfo" aria-live="polite"></div>
+      <details class="hint warn ios-only" hidden><summary>📱 Chọn video trên iPhone</summary>Bấm vào ô trên → <b>Thư viện ảnh</b> để chọn video trong Ảnh, hoặc <b>Chọn tệp</b> để lấy từ app Tệp.</details>
+      <div class="glabel step">2 · Đoạn cần lấy</div>
+      <div class="row tight">
+        <label>Bắt đầu (giây) <input type="text" id="rfStart" value="0" inputmode="decimal" autocomplete="off"></label>
+        <label>Kết thúc (giây, trống = hết video) <input type="text" id="rfEnd" inputmode="decimal" autocomplete="off"></label>
+      </div>
+      <div class="row tight">
+        <button type="button" id="rfSetStart">⏮ Bắt đầu từ chỗ đang xem</button>
+        <button type="button" id="rfSetEnd">⏭ Kết thúc ở chỗ đang xem</button>
+      </div>
+      <div class="hint" id="rfSegInfo" aria-live="polite"></div>
+      <div class="glabel step">3 · Khung &amp; cách đặt</div>
+      <div class="row tight">
+        <label>Khung
+          <select id="rfFrame">
+            <option value="9:16" selected>9:16 · TikTok</option>
+            <option value="1:1">1:1 · Vuông</option>
+            <option value="4:5">4:5 · Instagram</option>
+            <option value="keep">Giữ khung gốc</option>
+          </select>
+        </label>
+        <label id="rfFitWrap">Cách đặt video
+          <select id="rfFit">
+            <option value="crop" selected>Cắt đầy khung</option>
+            <option value="blur">Nền mờ</option>
+            <option value="color">Nền màu</option>
+          </select>
+        </label>
+      </div>
+      <label id="rfPosWrap">Vị trí phần giữ lại <output id="rfPosOut">Giữa</output>
+        <input type="range" id="rfPos" min="0" max="100" value="50">
+      </label>
+      <p class="hint" id="rfPosHint">Hoặc kéo hình trong khung xem trước sang trái / phải.</p>
+      <div class="row tight" id="rfBgWrap" hidden>
+        <label>Màu nền <input type="color" id="rfBg" value="#000000"></label>
+        <div class="swatches" data-for="rfBg" data-mode="rfFit" data-mode-value="color" data-mode-ok="color" aria-label="Màu nền gợi ý"></div>
+      </div>
+      <div class="row tight">
+        <label>🔊 Âm lượng
+          <select id="rfLoud">
+            <option value="social" selected>Chuẩn TikTok / YouTube (−14 LUFS)</option>
+            <option value="podcast">Podcast (−16 LUFS)</option>
+            <option value="off">Giữ nguyên như video gốc</option>
+          </select>
+        </label>
+      </div>
+      <div class="row actionbar">
+        <button id="rfPlay" disabled>▶ Xem thử đoạn này</button>
+        <button class="primary" id="rfRender" disabled>Xuất video</button>
+      </div>
+      <div class="hint estimate" id="rfEst"></div>
+      <div class="progress" id="rfProg" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-label="Tiến độ xuất video" hidden><div></div><span></span></div>
+      <div id="rfOut"></div>
+    </div>
+    <div class="preview">
+      <canvas id="rfCanvas" class="rf-canvas" role="img" aria-label="Xem trước video sau khi đổi khung" width="270" height="480"></canvas>
+      <label class="scrub">Xem tại <output id="rfTimeOut">0:00</output> <input type="range" id="rfScrub" min="0" max="0" step="0.05" value="0"></label>
+      <video id="rfVideo" class="rf-src" playsinline muted preload="auto" aria-hidden="true" tabindex="-1"></video>
+    </div>
+  </div>
+</section>
+
 <!-- ============ SELF TEST (index.html#selftest) ============ -->
 <section class="panel" id="tab-selftest">
   <h2>🩺 Tự kiểm tra thiết bị</h2>
@@ -614,19 +731,21 @@ Bắt đầu từ hôm nay nhé! 📚</textarea>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/1.0.11/pako.min.js" integrity="sha384-4NCF4sE5VX/W8Juvr+V9At6hCk146OuwgRSD6r857Tlar3RMK6IkyQ7W0xnNCZnG" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/upng-js@2.1.0/UPNG.js" integrity="sha384-5zRBkJ6IHy9ezWHX/cBuwC0SnrK23Cfx6G6kIjwR5no9khaSv2md2ZHMXphI3UCB" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js" integrity="sha384-OTofQ0MEeiSgh62havBcemCIK0gqj809wX6UA0uPISNMRnR6NZyCdGzX3SbLrgwL" crossorigin="anonymous" defer></script>
-<script src="js/core.js?v=c454128602"></script>
-<script src="js/common.js?v=8268dff49e"></script>
+<script src="js/core.js?v=014be7aa88"></script>
+<script src="js/common.js?v=bf4ac3320a"></script>
 <script src="js/convert.js?v=a892107986"></script>
 <script src="js/compress.js?v=c9854c750d"></script>
 <script src="js/editor.js?v=ed5bd6831c"></script>
-<script src="js/trim.js?v=fcc830357e"></script>
+<script src="js/trim.js?v=ff512418c5"></script>
 <script src="js/palettes.js?v=6547f6230e"></script>
 <script src="js/templates.js?v=efe79e3f4f"></script>
-<script src="js/video-engine.js?v=e6f6c0f433"></script>
-<script src="js/image-video.js?v=4f1369aaf9"></script>
-<script src="js/text-video.js?v=3b37ebecf9"></script>
-<script src="js/audio-video.js?v=11b03b8751"></script>
+<script src="js/captions.js?v=ffd7c34495"></script>
+<script src="js/video-engine.js?v=0459c4a58a"></script>
+<script src="js/image-video.js?v=10dc037047"></script>
+<script src="js/text-video.js?v=00aa6298f2"></script>
+<script src="js/audio-video.js?v=022eb34481"></script>
 <script src="js/creator.js?v=ae4be03532"></script>
-<script src="js/selftest.js?v=8a18fdd2b5"></script>
+<script src="js/reframe.js?v=5318cf906e"></script>
+<script src="js/selftest.js?v=8c58d1105c"></script>
 </body>
 </html>

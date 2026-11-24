@@ -10,7 +10,7 @@
   const loud = Loudness.mount('ivLoud', () => { if (!audio) return null; const s = settings(); return { audio, offset: s.start, duration: s.duration }; });
   const trim = AudioTrim.mount({
     box: $('ivTrim'), startId: 'ivStart', durId: 'ivDur',
-    onAudio: (b) => { audio = b; $('ivAudioInfo').textContent = `🎵 ${audioLabel} — ${formatTime(b.duration)}`; preview(); loud.refresh(); },
+    onAudio: (b, cuts) => { audio = b; if (cap) cap.setCuts(cuts); $('ivAudioInfo').textContent = `🎵 ${audioLabel} — ${formatTime(b.duration)}`; preview(); loud.refresh(); },
   });
 
   /* ---------------- templates ---------------- */
@@ -236,9 +236,21 @@
     try { await Promise.all([...specs].map((f) => document.fonts.load(f, 'AaĂâđỔẶ' + $('ivTitle').value))); } catch (_) {}
   }
 
+  let cap = null; // captions (mounted at the end)
+  /** Rows the title may cover (2 lines at full size): captions are kept off them. */
+  function titleZone(s) {
+    if (!s.title) return [];
+    const L = s.look || DEFAULT_LOOK, u = Math.min(s.W, s.H) / 1080, lh = L.size * u * 1.25;
+    let cy = L.pos === 'top' ? s.H * (L.bars ? 0.17 : 0.12) : L.pos === 'center' ? s.H * 0.5 : s.H * 0.84;
+    if (L.bars && L.pos === 'bottom') cy = s.H - barH(s) / 2;
+    return [[cy - lh * 1.1, cy + lh * 1.1]];
+  }
+  const clipOf = (s) => ({ audio, start: s.start, duration: s.duration });
   function scene() {
     const s = settings();
-    return { width: s.W, height: s.H, fps: s.fps, duration: s.duration, draw: makeDraw(s), audio, audioOffset: s.start };
+    const base = makeDraw(s), caption = cap && cap.painter(clipOf(s), titleZone(s)); // on top, identical in preview and export
+    const draw = caption ? (ctx, t, thumb) => { base(ctx, t, thumb); caption(ctx, t, s.W, s.H); } : base;
+    return { width: s.W, height: s.H, fps: s.fps, duration: s.duration, draw, audio, audioOffset: s.start };
   }
 
   function preview() {
@@ -246,7 +258,8 @@
     const sc = scene();
     canvas.width = sc.width;
     canvas.height = sc.height;
-    if (images.length) sc.draw(canvas.getContext('2d'), Math.min(0.01, sc.duration), true); // still frame: title fully visible
+    const ct = cap && cap.previewTime(clipOf(settings())); // while captions are being made: show the first one
+    if (images.length) sc.draw(canvas.getContext('2d'), ct != null ? ct : Math.min(0.01, sc.duration), true); // still frame: title fully visible
     else {
       // no photos yet: show the chosen template on a sample photo
       const s = settings();
@@ -290,6 +303,7 @@
       audioLabel = f.name;
       $('ivAudioInfo').textContent = `🎵 ${f.name} — ${formatTime(audio.duration)}`;
       trim.setAudio(audio);
+      cap.reset();
       preview();
       loud.refresh();
     } catch (e) {
@@ -309,6 +323,7 @@
     if (player.playing) { player.stop(); $('ivPlay').textContent = '▶ Xem thử'; preview(); return; }
     if (!images.length) return toast('Hãy chọn ít nhất 1 ảnh');
     trim.stop();
+    cap.stop();
     audioCtx().resume(); // inside the tap, before any await (iOS)
     await ensureFonts();
     const sc = { ...scene(), gain: await loud.gain() };
@@ -357,6 +372,9 @@
     controls: ['ivFit', 'ivBg', 'ivFx', 'ivTrans', 'ivFilter', 'ivProgress', 'ivSize', 'ivFps'],
     captureStyle: () => ({ ...look }),
   });
+
+  cap = Captions.mount({ box: $('ivCaps'), id: 'iv', trim, getClip: () => clipOf(settings()), onChange: () => previewSoon() });
+  ['ivStart', 'ivDur'].forEach((id) => $(id).addEventListener('input', () => cap.refresh())); // evenly spread captions follow the clip
 
   window.addEventListener('tabshown', (e) => e.detail === 'imgvideo' && preview());
   preview();

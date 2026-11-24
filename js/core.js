@@ -195,7 +195,7 @@
   function colorsFor(t, o) {
     if (o.bgMode === 'tpl') return { text: t.color, handle: t.handleColor || '#fff', stroke: t.stroke };
     const darkBg = o.bgMode === 'image' || luminance(o.bgColor) < 0.4;
-    const text = t.box ? t.color : darkBg ? '#fff' : '#111';
+    const text = t.box || t.note ? t.color : darkBg ? '#fff' : '#111'; // own backing (box / sticky note): keep its ink
     const stroke = t.stroke ? { ...t.stroke, color: darkBg ? '#000' : '#fff' } : null;
     return { text, handle: darkBg ? '#fff' : '#222', stroke };
   }
@@ -907,6 +907,44 @@
     return { step, sr, seg, len, sum, peak, get done() { return pos >= len; }, get progress() { return len ? pos / len : 1; } };
   }
 
+  /**
+   * The same index built from a STREAM of chunks (no whole-song buffer): push(channels) as decoded slices arrive.
+   * A 40-minute soundtrack costs ~300 KB instead of ~1 GB of samples. → { push, sr, seg, len, sum, peak }
+   */
+  function loudnessStream(sr, nCh = 2) {
+    const seg = Math.max(1, Math.round(sr * 0.1));
+    const [f1, f2] = kWeighting(sr);
+    const st = Array.from({ length: nCh }, () => new Float64Array(8));
+    const out = { sr, seg, len: 0, sum: new Float64Array(64), peak: new Float32Array(64) };
+    const grow = (n) => {
+      if (n <= out.sum.length) return;
+      let m = out.sum.length; while (m < n) m *= 2;
+      const s2 = new Float64Array(m); s2.set(out.sum); out.sum = s2;
+      const p2 = new Float32Array(m); p2.set(out.peak); out.peak = p2;
+    };
+    out.push = (channels) => {
+      const n = channels[0] ? channels[0].length : 0, pos = out.len;
+      grow(Math.ceil((pos + n) / seg) + 1);
+      const sum = out.sum, peak = out.peak;
+      channels.slice(0, nCh).forEach((x, c) => {
+        const S = st[c];
+        let a1 = S[0], a2 = S[1], b1 = S[2], b2 = S[3], c1 = S[4], c2 = S[5], d1 = S[6], d2 = S[7];
+        for (let j = 0; j < n; j++) {
+          const v = x[j], k = ((pos + j) / seg) | 0;
+          const av = v < 0 ? -v : v; if (av > peak[k]) peak[k] = av;
+          const y = f1.b[0] * v + f1.b[1] * a1 + f1.b[2] * a2 - f1.a[0] * b1 - f1.a[1] * b2;
+          a2 = a1; a1 = v; b2 = b1; b1 = y;
+          const z = f2.b[0] * y + f2.b[1] * c1 + f2.b[2] * c2 - f2.a[0] * d1 - f2.a[1] * d2;
+          c2 = c1; c1 = y; d2 = d1; d1 = z;
+          sum[k] += z * z;
+        }
+        S[0] = a1; S[1] = a2; S[2] = b1; S[3] = b2; S[4] = c1; S[5] = c2; S[6] = d1; S[7] = d2;
+      });
+      out.len = pos + n;
+    };
+    return out;
+  }
+
   /** Gated loudness of [fromSec, toSec) from an index (segment resolution: 100 ms). */
   function loudnessRange(idx, fromSec = 0, toSec) {
     const n = idx.sum.length;
@@ -1093,16 +1131,415 @@
     return { chars, hashtags: tags, over, warnings };
   }
 
+  /* ---------------- captions (burned-in subtitles) ---------------- */
+  /** "01:02:03,450" / "02:03.45" / "1:02" / "62.5" → seconds (NaN if not a time). */
+  function parseCueTime(s) {
+    const m = String(s).trim().match(/^(?:(\d+):)?(?:(\d{1,2}):)?(\d+(?:[.,]\d+)?)$/);
+    if (!m) return NaN;
+    const [h, mm] = m[2] !== undefined ? [+m[1] || 0, +m[2]] : [0, +m[1] || 0];
+    return h * 3600 + mm * 60 + parseFloat(m[3].replace(',', '.'));
+  }
+  const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
+  /** Cue text without markup: <i>, <c.x>, <v Name>, <00:01.000> karaoke stamps, {\an8} ASS tags, entities. */
+  /** &#…; / &#x…; → the character, only for real code points (a bad one stays as written instead of throwing). */
+  const decodeNum = (x, e) => {
+    const n = e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : +e.slice(1);
+    return n > 0 && n <= 0x10ffff && !(n >= 0xd800 && n <= 0xdfff) ? String.fromCodePoint(n) : x;
+  };
+  // only real tags: "I <3 you, 5 > 3" keeps its text (a catch-all <…> pattern ate it)
+  const CUE_TAG = /<\/?(?:b|i|u|c|v|ruby|rt|lang|font|span)(?:[.\s][^<>]*)?>|<\d+:\d{2}(?::\d{2})?[.,]\d{1,3}>/gi;
+  const cleanCueText = (s) => String(s)
+    .replace(CUE_TAG, '').replace(/\{\\[^}]*\}/g, '')
+    .replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (x, e) => (e[0] === '#' ? decodeNum(x, e) : ENTITIES[e.toLowerCase()] ?? x))
+    .split('\n').map((l) => l.replace(/\s+/g, ' ').trim()).filter(Boolean).join(' ').normalize('NFC');
+
+  /**
+   * SRT or WebVTT text → [{start, end, text}] (seconds, sorted by start; empty / reversed cues dropped).
+   * Read line by line: a "-->" line always starts a new cue, so a hand-edited file that lost the blank line
+   * between two cues still gives two captions (the index number left on the previous cue is dropped).
+   */
+  function parseSubtitles(src) {
+    const lines = String(src).replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n').split('\n');
+    const out = [];
+    let cur = null;
+    const flush = () => {
+      if (!cur) return;
+      const body = cleanCueText(cur.body.join('\n'));
+      if (cur.end > cur.start && body) out.push({ start: cur.start, end: cur.end, text: body });
+      cur = null;
+    };
+    for (const l of lines) {
+      if (l.includes('-->')) {
+        if (cur && cur.body.length && /^\s*\d+\s*$/.test(cur.body[cur.body.length - 1])) cur.body.pop();
+        flush();
+        const [a, b] = l.split('-->');
+        cur = { start: parseCueTime(a), end: parseCueTime(String(b).trim().split(/\s+/)[0]), body: [] }; // VTT cue settings after the time
+      } else if (!l.trim()) flush(); // end of a cue; NOTE / STYLE blocks and identifiers outside cues are skipped
+      else if (cur) cur.body.push(l);
+    }
+    flush();
+    return out.sort((x, y) => x.start - y.start);
+  }
+
+  /**
+   * Is this file timed from the start of the chosen clip (like the .srt this app downloads) rather than from
+   * the start of the song? Only decidable when the clip does not start at 0: every cue fits inside the clip
+   * length, and the file would otherwise put (some of) its captions before the clip.
+   */
+  function srtLooksClipRelative(cues, clipStart, clipDur) {
+    if (!(clipStart > 0) || !cues.length) return false;
+    return cues.every((c) => c.end <= clipDur + 0.5) && cues[0].start < clipStart;
+  }
+
+  /** 3723.45 → "01:02:03,450" (SRT). */
+  function srtTime(t) {
+    const ms = Math.max(0, Math.round(t * 1000));
+    const p = (n, w = 2) => String(n).padStart(w, '0');
+    return `${p(Math.floor(ms / 3600000))}:${p(Math.floor(ms / 60000) % 60)}:${p(Math.floor(ms / 1000) % 60)},${p(ms % 1000, 3)}`;
+  }
+  /** Cues → SRT file text (for YouTube / CapCut). */
+  const toSRT = (cues) => cues.map((c, i) => `${i + 1}\n${srtTime(c.start)} --> ${srtTime(c.end)}\n${c.text}\n`).join('\n');
+
+  /** Pasted lyrics / script → one caption per non-empty line. */
+  const captionLines = (text) => String(text).normalize('NFC').split(/\r?\n/).map((l) => l.replace(/\s+/g, ' ').trim()).filter(Boolean);
+
+  /**
+   * Untimed lines spread over [from, to): each line gets time in proportion to its length (people read / speak
+   * long lines longer), at least 0.6 s of weight so "Ừ." still shows.
+   */
+  function spreadCues(lines, from, to) {
+    if (!lines.length || !(to > from)) return [];
+    const w = lines.map((l) => Math.max(6, graphemes(l).length));
+    const total = w.reduce((a, b) => a + b, 0);
+    let t = from;
+    return lines.map((text, i) => { const start = t; t = i === lines.length - 1 ? to : t + ((to - from) * w[i]) / total; return { start, end: t, text }; });
+  }
+
+  /** Move every cue by dt seconds (sync fix); cues pushed fully before 0 are dropped, the rest clamped at 0. */
+  const shiftCues = (cues, dt) => cues.map((c) => ({ ...c, start: Math.max(0, c.start + dt), end: c.end + dt })).filter((c) => c.end > c.start);
+
+  /**
+   * Silences removed from the song (cuts = [{from, to}] in the original timeline, sorted, not overlapping):
+   * an original time → its time in the shortened song (inside a cut → where the cut was).
+   */
+  function mapTime(t, cuts) {
+    let removed = 0;
+    for (const c of cuts || []) {
+      if (t <= c.from) break;
+      removed += Math.min(t, c.to) - c.from;
+    }
+    return t - removed;
+  }
+  /** Inverse of mapTime: a time in the shortened song → the original time (cut-out parts are skipped). */
+  function unmapTime(t, cuts) {
+    let o = t;
+    for (const c of cuts || []) { if (o < c.from) break; o += c.to - c.from; }
+    return o;
+  }
+  /** Cues (original timeline) → cues on the shortened song; captions that fell inside a cut are dropped. */
+  const remapCues = (cues, cuts) => (cuts && cuts.length
+    ? cues.map((c) => ({ ...c, start: mapTime(c.start, cuts), end: mapTime(c.end, cuts) })).filter((c) => c.end - c.start >= 0.05)
+    : cues);
+
+  /** Index of the cue showing at time t (cues sorted by start), or -1. On overlap the later cue wins. */
+  const maxEnds = new WeakMap();
+  function cueAt(cues, t) {
+    let lo = 0, hi = cues.length - 1, k = -1;
+    while (lo <= hi) { const m = (lo + hi) >> 1; if (cues[m].start <= t) { k = m; lo = m + 1; } else hi = m - 1; }
+    // running max of the ends: a long cue under several short ones is still found (only 4 back were checked)
+    let me = maxEnds.get(cues);
+    if (!me || me.length !== cues.length) {
+      me = new Float64Array(cues.length);
+      cues.forEach((c, i) => { me[i] = Math.max(c.end, i ? me[i - 1] : -Infinity); });
+      maxEnds.set(cues, me);
+    }
+    for (let i = k; i >= 0 && me[i] > t; i--) if (t < cues[i].end) return i;
+    return -1;
+  }
+
+  /**
+   * Word-by-word highlight: which word of the cue is being said at t (−1 before the cue). Words get time in
+   * proportion to their length; the last word stays lit until the cue ends.
+   */
+  function activeWord(text, start, end, t) {
+    const words = String(text).split(/\s+/).filter(Boolean);
+    if (!words.length || t < start) return -1;
+    const w = words.map((x) => graphemes(x).length + 1), total = w.reduce((a, b) => a + b, 0);
+    let acc = 0;
+    const f = ((Math.min(t, end) - start) / Math.max(1e-6, end - start)) * total;
+    for (let i = 0; i < words.length; i++) { acc += w[i]; if (f < acc) return i; }
+    return words.length - 1;
+  }
+
+  /**
+   * Where captions may be drawn (px): on a vertical frame, the part safe on TikTok AND Reels AND Shorts
+   * (the strictest edges of all three); on other frames, a 5 % side margin and the bottom 10 % kept clear.
+   */
+  function captionRect(W, H) {
+    const rs = ['tiktok', 'reels', 'shorts'].map((p) => safeRect(p, W, H));
+    if (rs.every(Boolean)) {
+      const x = Math.max(...rs.map((r) => r.x)), y = Math.max(...rs.map((r) => r.y));
+      const x2 = Math.min(...rs.map((r) => r.x + r.w)), y2 = Math.min(...rs.map((r) => r.y + r.h));
+      return { x, y, w: x2 - x, h: y2 - y };
+    }
+    const x = Math.round(W * 0.05), y = Math.round(H * 0.05);
+    return { x, y, w: W - 2 * x, h: Math.round(H * 0.9) - y };
+  }
+
+  /**
+   * Top y of an h-tall caption block in `rect`: as low as possible (bottom of the safe box, where viewers expect
+   * subtitles) but never over the video's own title / text (avoid = [[y0, y1], …]). If no free spot fits, the bottom.
+   */
+  function captionTop(rect, h, avoid = [], gap = 0) {
+    const y = captionSpot(rect, h, avoid, gap);
+    return y === null ? rect.y + rect.h - h : y;
+  }
+  /** Lowest free top y for an h-tall block, or null when nothing fits. */
+  function captionSpot(rect, h, avoid = [], gap = 0) {
+    const lo = rect.y, hi = rect.y + rect.h - h;
+    const free = (y) => y >= lo - 0.5 && y <= hi + 0.5 && avoid.every(([a, b]) => y + h + gap <= a || y >= b + gap);
+    const cands = [hi, ...avoid.flatMap(([a, b]) => [a - gap - h, b + gap])].filter(free);
+    return cands.length ? Math.max(...cands) : null;
+  }
+  /**
+   * avoid given as LAYERS (most to least protected sets of rows): the first layer that leaves room wins.
+   * E.g. [[title, art, visualizer, bar], [title, art, bar], [title]] → over the visualizer before the cover art.
+   */
+  function captionTopLayers(rect, h, layers, gap = 0) {
+    for (const avoid of layers) { const y = captionSpot(rect, h, avoid, gap); if (y !== null) return y; }
+    return rect.y + rect.h - h;
+  }
+
+  /* ---------------- reframe a video (“Cắt & đổi khung video”) ---------------- */
+  /** 75.25 → "1:15,3": a time to a tenth of a second (formatTime would round 0,5 s away). */
+  function formatTenths(v) {
+    const x = Math.round((+v || 0) * 10) / 10, m = Math.floor(x / 60);
+    return `${m}:${(x - m * 60).toFixed(1).padStart(4, '0').replace('.', ',')}`;
+  }
+  /** Output frames at 1080 px wide (what TikTok / Reels / Shorts / Instagram recommend). */
+  const REFRAME_FRAMES = { '9:16': { w: 1080, h: 1920 }, '1:1': { w: 1080, h: 1080 }, '4:5': { w: 1080, h: 1350 } };
+  /** Output size: a named frame, or "keep" = the source's own shape with the long side ≤ 1920 (even numbers). */
+  function reframeSize(frame, sw, sh) {
+    const f = REFRAME_FRAMES[frame];
+    if (f) return { w: f.w, h: f.h };
+    if (!(sw > 0 && sh > 0)) return { w: 0, h: 0 };
+    const s = Math.min(1, 1920 / Math.max(sw, sh));
+    return { w: even(sw * s), h: even(sh * s) };
+  }
+  /**
+   * "Cắt cho đầy khung": the largest rectangle of the output's shape inside the source. pos (0..1) slides it along
+   * the axis that has room — 0 = left (top), 0.5 = centre, 1 = right (bottom). → { left, top, width, height, axis }
+   * in source pixels, even sizes, always inside the source; axis = 'x' | 'y' | null (same shape: nothing to slide).
+   */
+  function reframeCrop(sw, sh, ow, oh, pos = 0.5) {
+    const p = Number.isFinite(+pos) ? Math.min(1, Math.max(0, +pos)) : 0.5;
+    const a = ow / oh;
+    let width = even(sw), height = even(sh);
+    if (sw / sh > a) width = Math.min(width, even(sh * a));
+    else height = Math.min(height, even(sw / a));
+    const axis = sw - width >= 2 ? 'x' : sh - height >= 2 ? 'y' : null;
+    return { left: Math.round((sw - width) * p), top: Math.round((sh - height) * p), width, height, axis };
+  }
+  /**
+   * Dragging the picture in the preview by `d` output pixels (right / down = positive) moves the crop the other
+   * way, like sliding a photo under a frame. slack = the room left over, in output pixels.
+   */
+  function reframeDrag(pos, d, slack) {
+    if (!(slack > 0)) return pos;
+    return Math.min(1, Math.max(0, pos - d / slack));
+  }
+  /** Room (output pixels) the crop can slide by: what to divide a drag by. */
+  function reframeSlack(sw, sh, ow, oh) {
+    const c = reframeCrop(sw, sh, ow, oh);
+    return c.axis === 'x' ? (sw - c.width) * (ow / c.width) : c.axis === 'y' ? (sh - c.height) * (oh / c.height) : 0;
+  }
+  /** "Thu nhỏ" (nền mờ / nền màu): where the whole picture goes inside the output, whole pixels. */
+  function reframeFit(sw, sh, ow, oh) {
+    const r = containRect(sw, sh, ow, oh);
+    const w = Math.round(r.w), h = Math.round(r.h);
+    return { x: Math.round((ow - w) / 2), y: Math.round((oh - h) / 2), w, h };
+  }
+  /**
+   * The part of the video to keep. end empty / 0 = to the end. → { start, end, error } (error in Vietnamese or null).
+   */
+  /**
+   * What a person types for a time: "2,5" / "2.5" (Vietnamese decimal comma) / "1:15,3" / "75". → seconds, or NaN.
+   * (type=number in Chrome with a Vietnamese locale turned "2,5" into 25.)
+   */
+  function parseSeconds(v) {
+    const s = String(v == null ? '' : v).trim().replace(/,/g, '.');
+    if (!s) return NaN;
+    const m = s.match(/^(?:(\d+):)?(\d+(?:\.\d*)?|\.\d+)$/);
+    return m ? (+m[1] || 0) * 60 + parseFloat(m[2]) : NaN;
+  }
+
+  function reframeSegment(start, end, dur) {
+    const s = Math.max(0, parseSeconds(start) || 0), en = parseSeconds(end);
+    const e = !(en > 0) ? dur : Math.min(dur, en);
+    if (!(dur > 0)) return { start: 0, end: 0, error: 'Chưa có video' };
+    if (s >= dur) return { start: s, end: e, error: `Điểm bắt đầu (${formatTime(s)}) phải trước khi video hết (${formatTime(dur)})` };
+    if (e - s < 0.5) return { start: s, end: e, error: 'Đoạn cần dài ít nhất 0,5 giây — điểm kết thúc phải sau điểm bắt đầu' };
+    return { start: s, end: e, error: null };
+  }
+
   /** Files bigger than this are refused before reading them into memory (a phone tab would crash instead). */
-  const MAX_FILE_BYTES = { image: 150 * 1048576, audio: 1024 * 1048576 };
+  const MAX_FILE_BYTES = { image: 150 * 1048576, audio: 1024 * 1048576, subtitle: 2 * 1048576 };
   /** → error message (Vietnamese) or null. */
   function checkFileSize(file, kind) {
     const max = MAX_FILE_BYTES[kind];
     if (!max || !file || !(file.size > max)) return null;
-    return `"${file.name}" quá lớn (${formatBytes(file.size)}) — tối đa ${formatBytes(max)} cho ${kind === 'image' ? 'ảnh' : 'audio/video'}.`;
+    return `"${file.name}" quá lớn (${formatBytes(file.size)}) — tối đa ${formatBytes(max)} cho ${kind === 'image' ? 'ảnh' : kind === 'subtitle' ? 'file phụ đề' : 'audio/video'}.`;
+  }
+
+  /* ---------------- text video: when slides change, keyword highlight, reading time ---------------- */
+  const MIN_SLIDE = 0.5; // no slide shorter than this (s): a flash nobody can read
+
+  /**
+   * When each slide starts (seconds from the start of the video).
+   *  mode 'even' — equal parts (or `fixedSeg` each);
+   *  mode 'beat' — each change moves to the nearest drum hit (`onsets`, [{t}], from bassOnsets) within half a slide;
+   *  mode 'tap'  — the moments the user tapped while listening (`taps`); slides without a tap share what is left.
+   * `audioDur` = usable music length (after the chosen start). → { starts, duration, snapped }
+   */
+  function slidePlan({ n, mode = 'even', fixedSeg = 0, audioDur = 0, onsets = [], taps = [] }) {
+    n = Math.max(1, n | 0);
+    const base = slideTiming(n, fixedSeg, audioDur);
+    const even = (from, k, end) => Array.from({ length: k }, (_, i) => from + ((end - from) * i) / k);
+    if (mode === 'tap' && taps.length) {
+      const seg = fixedSeg > 0 ? fixedSeg : 3;
+      const kept = [];
+      let prev = 0;
+      for (const t of [...taps].sort((a, b) => a - b)) {
+        if (kept.length >= n - 1) break;
+        if (t - prev < MIN_SLIDE || (audioDur > 0 && t > audioDur - MIN_SLIDE)) continue; // double tap / too late
+        kept.push(t);
+        prev = t;
+      }
+      const left = n - 1 - kept.length; // slides that got no tap
+      let duration;
+      if (audioDur > 0) duration = audioDur;
+      else duration = prev + seg * (left + 1);
+      const tail = even(prev, left + 1, duration).slice(1);
+      return { starts: [0, ...kept, ...tail], duration, snapped: 0 };
+    }
+    const starts = even(0, n, base.duration);
+    if (fixedSeg > 0) for (let i = 0; i < n; i++) starts[i] = i * base.seg; // slides past the music end stay hidden
+    let snapped = 0;
+    // slides under 1 s each: moving a change by up to half a slide would push the last slides past the end
+    const tooShort = mode === 'beat' && base.seg < 2 * MIN_SLIDE;
+    if (mode === 'beat' && !tooShort && onsets.length && audioDur > 0) {
+      const win = base.seg / 2;
+      for (let i = 1; i < n; i++) {
+        const target = starts[i], lo = starts[i - 1] + MIN_SLIDE, hi = base.duration - MIN_SLIDE;
+        let best = null;
+        for (let j = Math.max(0, lastOnset(onsets, target - win)); j < onsets.length && onsets[j].t <= target + win; j++) {
+          const t = onsets[j].t;
+          if (t < lo || t > hi || Math.abs(t - target) > win) continue;
+          if (best === null || Math.abs(t - target) < Math.abs(best - target)) best = t;
+        }
+        if (best !== null) { starts[i] = best; snapped++; } else starts[i] = Math.max(target, lo);
+      }
+    }
+    return { starts, duration: base.duration, snapped, tooShort };
+  }
+
+  /** Index of the slide shown at time t (last start ≤ t). */
+  function slideAt(starts, t) {
+    let lo = 0, hi = starts.length - 1, r = 0;
+    while (lo <= hi) { const m = (lo + hi) >> 1; if (starts[m] <= t) { r = m; lo = m + 1; } else hi = m - 1; }
+    return r;
+  }
+
+  /**
+   * "Mẹo *tiết kiệm* tiền" → { plain: 'Mẹo tiết kiệm tiền', words: [{w:'Mẹo',hi:false},{w:'tiết',hi:true},…] }.
+   * A word is highlighted when any part of it is inside *stars*.
+   */
+  function highlightWords(text) {
+    const segs = parseHighlight(text);
+    const plain = segs.map((s) => s.t).join('');
+    const flag = new Uint8Array(plain.length);
+    let p = 0;
+    for (const s of segs) { if (s.hi) flag.fill(1, p, p + s.t.length); p += s.t.length; }
+    const words = [];
+    for (const m of plain.matchAll(/\S+/g)) {
+      const f = flag.subarray(m.index, m.index + m[0].length);
+      const a = f.indexOf(1), b = f.lastIndexOf(1) + 1;
+      // a / b: the highlighted part of the word ("*sách*," → the comma stays outside the box)
+      words.push(a < 0 ? { w: m[0], hi: false } : { w: m[0], hi: true, a, b });
+    }
+    return { plain, words };
+  }
+
+  /**
+   * Split wrapped lines (from `wrap` of the plain text — words in order, long words maybe broken in pieces)
+   * into runs [{t, hi}] whose texts join back to exactly the line. The space between two highlighted
+   * words is highlighted too (one box), any other space is not.
+   */
+  function lineHighlights(lines, words) {
+    let wi = 0, rem = '', hi = false;
+    return lines.map((line) => {
+      const toks = line ? line.split(' ') : [];
+      // each token → parts [{t, hi}]; a whole (unbroken) word keeps punctuation outside its *stars* unboxed
+      const parts = toks.map((tok) => {
+        let whole = false, w = null;
+        if (!rem) { w = words[wi++] || { w: tok, hi: false }; rem = w.w; hi = w.hi; whole = tok === w.w; }
+        rem = rem.startsWith(tok) ? rem.slice(tok.length) : '';
+        if (whole && hi && (w.a > 0 || w.b < tok.length)) {
+          return [{ t: tok.slice(0, w.a), hi: false }, { t: tok.slice(w.a, w.b), hi: true }, { t: tok.slice(w.b), hi: false }].filter((x) => x.t);
+        }
+        return [{ t: tok, hi }];
+      });
+      const runs = [];
+      const push = (t, h) => { const last = runs[runs.length - 1]; if (last && last.hi === h) last.t += t; else runs.push({ t, hi: h }); };
+      parts.forEach((ps, i) => {
+        if (i > 0) push(' ', parts[i - 1][parts[i - 1].length - 1].hi && ps[0].hi);
+        ps.forEach((x) => push(x.t, x.hi));
+      });
+      return runs.length ? runs : [{ t: line, hi: false }];
+    });
+  }
+
+  /**
+   * Word-by-word reveal at progress a (0..1) over lines with `counts` words each.
+   * → { shown: words visible, cur: global index of the word appearing now (-1 = none), p: its own progress 0..1 }
+   */
+  function wordReveal(counts, a) {
+    const N = counts.reduce((s, c) => s + c, 0);
+    if (!N) return { shown: 0, cur: -1, p: 1 };
+    if (a >= 1) return { shown: N, cur: N - 1, p: 1 };
+    const f = Math.max(0, a) * N, shown = Math.ceil(f);
+    return { shown, cur: shown - 1, p: shown ? f - (shown - 1) : 0 };
+  }
+
+  /** Progress 0..1 of line i of n when lines enter one after another (each starts 0.35 of a line later). */
+  function lineStagger(i, n, a) {
+    const step = 0.35, span = 1 + (Math.max(1, n) - 1) * step;
+    return Math.max(0, Math.min(1, a * span - i * step));
+  }
+
+  /** Seconds a viewer needs to read a slide on a phone (~3 words/s, at least 1 s). Stars don't count. */
+  function readTime(text) {
+    const n = (String(text).replace(/\*/g, '').match(/\S+/g) || []).length;
+    return Math.max(1, 0.4 + n / 3);
+  }
+
+  /** Slides shown too briefly to read, or never shown (start past the end). → [{ i, have, need, hidden }] */
+  function readWarnings(slides, starts, duration) {
+    const out = [];
+    slides.forEach((s, i) => {
+      const end = Math.min(duration, i + 1 < starts.length ? starts[i + 1] : duration);
+      const have = Math.max(0, end - starts[i]);
+      const need = readTime(s);
+      if (starts[i] >= duration - 0.01) out.push({ i, have: 0, need, hidden: true });
+      else if (have + 0.05 < need) out.push({ i, have, need, hidden: false });
+    });
+    return out;
   }
 
   return {
+    slidePlan, slideAt, highlightWords, lineHighlights, readTime, readWarnings, MIN_SLIDE, wordReveal, lineStagger,
+    parseCueTime, cleanCueText, parseSubtitles, srtTime, toSRT, captionLines, spreadCues, shiftCues, mapTime, unmapTime, remapCues, cueAt, activeWord, captionRect, captionTop, captionSpot, captionTopLayers, srtLooksClipRelative,
+    REFRAME_FRAMES, formatTenths, parseSeconds, loudnessStream, reframeSize, reframeCrop, reframeDrag, reframeSlack, reframeFit, reframeSegment,
     kWeighting, loudness, loudnessIndex, loudnessRange, downmixStereo, wavParts, LOUDNESS_TARGETS, normGain, SAFE_ZONES, safeRect, containRect, encodeWav, parseHighlight, fitQuality, TEXT_LIMITS, captionStats, MAX_FILE_BYTES, checkFileSize,
     audioFade, fadeGain, exportEstimate, friendlyError, FILTERS, applyFilter, avGeometry, trimDrag, findSilences, silenceCuts, removeRanges, envelope, envAt, bassOnsets, punchAt, bassPush, prng, bandGroups, particleAt, lifeAlpha, ripples, slowWave, mixHex,
     formatBytes, formatTime, baseName, detectPlatform,

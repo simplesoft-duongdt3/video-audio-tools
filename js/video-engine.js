@@ -369,6 +369,7 @@ const VideoEngine = (() => {
       await actx.resume();
       this.playing = true;
       const start = actx.currentTime + 0.05;
+      this.t0 = start; // audio-clock time of t = 0 (tap-to-sync reads it)
       if (scene.audio) {
         this.src = actx.createBufferSource();
         this.src.buffer = scene.audio;
@@ -493,7 +494,7 @@ function wireRender({ btn, prog, out, buildScene, fileName, peek }) {
     if (!scene) return;
     ctrl = new AbortController();
     btn.textContent = 'Huỷ';
-    out.innerHTML = '';
+    clearOut(out); // frees the previous export (showOutput could not: its <video> was already gone)
     try {
       const { blob, ext, mode, fallbackReason } = await VideoEngine.render(scene, (f, txt) => setProgress(prog, f, txt), ctrl.signal);
       let note = '';

@@ -6,7 +6,7 @@ const { fx, probe, hasFfprobe, openTab, renderAndDownload, codecs, NO_AAC, NO_EX
 
 const TABS = [
   { tab: 'imgvideo', box: '#ivTemplates', canvas: '#ivCanvas', min: 9 },
-  { tab: 'textvideo', box: '#tvTemplates', canvas: '#tvCanvas', min: 19 },
+  { tab: 'textvideo', box: '#tvTemplates', canvas: '#tvCanvas', min: 36 },
   { tab: 'audiovideo', box: '#avTemplates', canvas: '#avCanvas', min: 26 },
 ];
 

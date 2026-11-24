@@ -62,7 +62,7 @@ test.describe('phone layout', () => {
   });
 
   test('touch targets: visible buttons are at least 44 px tall', async ({ page }) => {
-    for (const tab of ['convert', 'compress', 'edit', 'imgvideo', 'textvideo', 'audiovideo', 'thumb', 'extract']) {
+    for (const tab of ['convert', 'compress', 'edit', 'imgvideo', 'textvideo', 'reframe', 'audiovideo', 'thumb', 'extract']) {
       await openTab(page, tab);
       const small = await page.evaluate((tab) => [...document.querySelectorAll(`#tab-${tab} button, #tabs button`)]
         .filter((b) => b.offsetParent && !b.closest('.templates .tcard'))

@@ -162,3 +162,12 @@ test('security: user text never goes into innerHTML in the new creator tools', (
   // the only template literals in innerHTML are static markup + an object URL; names/titles use textContent
   for (const m of src.matchAll(/innerHTML\s*=\s*`([\s\S]*?)`/g)) assert.doesNotMatch(m[1], /\$\{(?!url\}|canShareFiles \?)/, m[1].slice(0, 60));
 });
+
+test('security: captions, text video and reframe never put user text (cue text, file names) into innerHTML', () => {
+  for (const f of ['captions.js', 'text-video.js', 'reframe.js']) {
+    const src = readFileSync(join(ROOT, 'js', f), 'utf8');
+    // only the fixed element-id prefix may be interpolated into markup; everything the user typed goes via textContent
+    for (const m of src.matchAll(/innerHTML\s*[+]?=\s*`([\s\S]*?)`/g)) assert.doesNotMatch(m[1], /\$\{(?!id\})/, `${f}: ${m[1].slice(0, 60)}`);
+    for (const m of src.matchAll(/innerHTML\s*[+]?=\s*(?!`|'')([^;\n]+)/g)) assert.match(m[1].trim(), /^(''|""|`)/, `${f}: innerHTML = ${m[1].slice(0, 60)}`);
+  }
+});

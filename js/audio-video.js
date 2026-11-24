@@ -10,13 +10,15 @@
   const loud = Loudness.mount('avLoud', () => { if (!audio) return null; const o = opts(); return { audio, offset: o.start, duration: o.duration }; });
   const trim = AudioTrim.mount({
     box: $('avTrim'), startId: 'avStart', durId: 'avDur',
-    onAudio: (b) => {
+    onAudio: (b, cuts) => {
       audio = b;
+      if (cap) cap.setCuts(cuts);
       channels = Array.from({ length: b.numberOfChannels }, (_, i) => b.getChannelData(i));
       $('avAudioInfo').textContent = `🎵 ${audioFile} — ${formatTime(b.duration)} · ${b.sampleRate} Hz · ${b.numberOfChannels} kênh`;
       preview();
     },
   });
+  let cap = null; // captions (mounted below, after the preview helpers exist)
   const FFT = 2048;
 
   /*
@@ -921,9 +923,20 @@
     };
   }
 
+  const clipOf = (o) => ({ audio, start: o.start, duration: o.duration });
   function scene() {
     const o = opts();
-    return { width: o.W, height: o.H, fps: o.fps, duration: o.duration, draw: makeDraw(o, art), audio, audioOffset: o.start };
+    const base = makeDraw(o, art);
+    // captions on top of everything (same in preview and export), never over the title / subtitle / label
+    const L = o.look || DEFAULT_LOOK, g = geometry(o.W, o.H, L.layout, o.style, { badge: !!o.badge, titleScale: L.titleScale || 1 });
+    const own = [g.zones.text, ...(o.badge && g.badgeY != null ? [[g.badgeY - 40 * g.u, g.badgeY + 40 * g.u]] : [])];
+    const Z = (k) => (g.zones[k] && g.zones[k][1] > g.zones[k][0] ? [g.zones[k]] : []);
+    // most protected first: keep off the cover art, visualizer and time bar; if no room, over the visualizer;
+    // then over the art; never over the title
+    const avoid = [[...own, ...Z('art'), ...Z('vis'), ...Z('prog')], [...own, ...Z('art'), ...Z('prog')], [...own, ...Z('prog')], own];
+    const caption = cap && cap.painter(clipOf(o), avoid);
+    const draw = caption ? (ctx, t) => { base(ctx, t); caption(ctx, t, o.W, o.H); } : base;
+    return { width: o.W, height: o.H, fps: o.fps, duration: o.duration, draw, audio, audioOffset: o.start, captionBand: caption && caption.band, zones: g.zones };
   }
 
   /**
@@ -932,6 +945,7 @@
    */
   window.AVTest = {
     styles: () => [...$('avStyle').options].map((x) => x.value),
+    scene: () => scene(),
     frame(style, { W = 360, H = 640, t = 0.5, layout = 'cover', fx = {} } = {}) {
       const o = { ...opts(), W, H, fps: 30, style, duration: 4, start: 0, look: { ...DEFAULT_LOOK, layout }, bgMode: 'gradient', progress: true, badge: '', fx: { ...opts().fx, dust: false, punch: false, ripple: false, sway: false, bgMove: false, colorFlow: false, ...fx } };
       const draw = makeDraw(o, null);
@@ -955,8 +969,9 @@
     const sc = scene();
     canvas.width = sc.width;
     canvas.height = sc.height;
-    // show a moment with sound rather than the silent first frame
-    const t = audio ? Math.min(sc.duration * 0.3, 20) : 0;
+    // show a moment with sound rather than the silent first frame — or the first caption, while captions are being made
+    const ct = cap && cap.previewTime(clipOf(opts()));
+    const t = ct != null ? ct : audio ? Math.min(sc.duration * 0.3, 20) : 0;
     sc.draw(canvas.getContext('2d'), t);
     if (rw) rw.refresh();
   }
@@ -968,6 +983,7 @@
       const buf = await decodeAudioFile(f);
       audio = buf;
       trim.setAudio(buf);
+      cap.reset();
       channels = Array.from({ length: buf.numberOfChannels }, (_, i) => buf.getChannelData(i));
       audioFile = f.name;
       $('avAudioInfo').textContent = `🎵 ${f.name} — ${formatTime(buf.duration)} · ${buf.sampleRate} Hz · ${buf.numberOfChannels} kênh`;
@@ -1013,6 +1029,7 @@
     if (bad) return toast(bad);
     audioCtx().resume(); // inside the tap, before any await (iOS)
     trim.stop();
+    cap.stop();
     await ensureFonts();
     const sc = { ...scene(), gain: await loud.gain() };
     canvas.width = sc.width; canvas.height = sc.height;
@@ -1096,6 +1113,9 @@
     // a chosen cover keeps its "image" background; a label the user typed is kept too
     skipControl: (id) => (id === 'avBgMode' && art && $('avBgMode').value === 'image') || (id === 'avBadge' && badgeTyped && $('avBadge').value.trim() !== ''),
   });
+
+  cap = Captions.mount({ box: $('avCaps'), id: 'av', trim, getClip: () => clipOf(opts()), onChange: () => previewSoon() });
+  ['avStart', 'avDur'].forEach((id) => $(id).addEventListener('input', () => cap.refresh())); // evenly spread captions follow the clip
 
   window.addEventListener('tabshown', (e) => e.detail === 'audiovideo' && preview());
   preview();
