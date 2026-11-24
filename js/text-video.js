@@ -476,6 +476,7 @@
   onFiles('tvBgImg', async ([f]) => {
     try { bgImage = await readImage(f); preview(); } catch (e) { toast(e.message); }
   });
+  const loud = Loudness.mount('tvLoud', () => (audio ? { audio, offset: 0, duration: timing().duration } : null));
   onFiles('tvAudio', async ([f]) => {
     $('tvAudioInfo').textContent = 'Đang đọc audio…';
     try {
@@ -484,6 +485,7 @@
       audioFile = f.name;
       updateAudioInfo();
       if (rw) rw.refresh();
+      loud.refresh();
     } catch (e) {
       audio = null;
       $('tvAudioInfo').textContent = e.message;
@@ -494,7 +496,7 @@
     if (player.playing) { player.stop(); $('tvPlay').textContent = '▶ Xem thử'; preview(); return; }
     audioCtx().resume(); // inside the tap, before any await (iOS)
     await ensureFonts();
-    const sc = makeScene();
+    const sc = { ...makeScene(), gain: await loud.gain() };
     canvas.width = sc.width; canvas.height = sc.height;
     $('tvPlay').textContent = '■ Dừng';
     player.play(sc, (t) => { if (t < 0) { $('tvPlay').textContent = '▶ Xem thử'; preview(); } });
@@ -540,7 +542,7 @@
       player.stop();
       $('tvPlay').textContent = '▶ Xem thử';
       await ensureFonts();
-      return makeScene();
+      return { ...makeScene(), gain: await loud.gain() };
     },
   });
 

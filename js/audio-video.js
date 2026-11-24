@@ -7,6 +7,7 @@
   const canvas = $('avCanvas');
   const player = new VideoEngine.Player(canvas);
   let rw = null; // export button (estimate line)
+  const loud = Loudness.mount('avLoud', () => { if (!audio) return null; const o = opts(); return { audio, offset: o.start, duration: o.duration }; });
   const trim = AudioTrim.mount({
     box: $('avTrim'), startId: 'avStart', durId: 'avDur',
     onAudio: (b) => {
@@ -970,6 +971,7 @@
       channels = Array.from({ length: buf.numberOfChannels }, (_, i) => buf.getChannelData(i));
       audioFile = f.name;
       $('avAudioInfo').textContent = `🎵 ${f.name} — ${formatTime(buf.duration)} · ${buf.sampleRate} Hz · ${buf.numberOfChannels} kênh`;
+      loud.refresh();
       // A whole long track can need ~1 GB of RAM to export; phones (iOS especially) reload the tab instead.
       if (IS_MOBILE && buf.duration > 300) {
         $('avAudioInfo').textContent += ' · ⚠️ Bài dài trên điện thoại có thể làm trang bị tải lại vì thiếu bộ nhớ — nếu gặp, hãy cắt bài ngắn hơn hoặc xuất trên máy tính.';
@@ -1012,7 +1014,7 @@
     audioCtx().resume(); // inside the tap, before any await (iOS)
     trim.stop();
     await ensureFonts();
-    const sc = scene();
+    const sc = { ...scene(), gain: await loud.gain() };
     canvas.width = sc.width; canvas.height = sc.height;
     $('avPlay').textContent = '■ Dừng';
     player.play(sc, (t) => { if (t < 0) { $('avPlay').textContent = '▶ Xem thử'; preview(); } });
@@ -1035,7 +1037,7 @@
       player.stop();
       $('avPlay').textContent = '▶ Xem thử';
       await ensureFonts();
-      return scene();
+      return { ...scene(), gain: await loud.gain() }; // loudness is measured only on export / play (not every preview frame)
     },
   });
 

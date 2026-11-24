@@ -1,7 +1,7 @@
 const { test, expect } = require('@playwright/test');
 const { openTab, codecs } = require('./helpers');
 
-const TABS = ['convert', 'compress', 'edit', 'imgvideo', 'textvideo', 'audiovideo'];
+const TABS = ['audiovideo', 'imgvideo', 'textvideo', 'thumb', 'extract', 'convert', 'compress', 'edit'];
 
 test('loads with no errors and every tab opens', async ({ page }) => {
   const errors = await openTab(page);
