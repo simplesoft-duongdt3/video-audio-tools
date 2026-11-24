@@ -7,9 +7,10 @@
   let rw = null; // export button (estimate line)
   const thumbCache = new Map(); // template thumbnails + empty preview (sample photo)
   let audioLabel = '';
+  const loud = Loudness.mount('ivLoud', () => { if (!audio) return null; const s = settings(); return { audio, offset: s.start, duration: s.duration }; });
   const trim = AudioTrim.mount({
     box: $('ivTrim'), startId: 'ivStart', durId: 'ivDur',
-    onAudio: (b) => { audio = b; $('ivAudioInfo').textContent = `🎵 ${audioLabel} — ${formatTime(b.duration)}`; preview(); },
+    onAudio: (b) => { audio = b; $('ivAudioInfo').textContent = `🎵 ${audioLabel} — ${formatTime(b.duration)}`; preview(); loud.refresh(); },
   });
 
   /* ---------------- templates ---------------- */
@@ -290,6 +291,7 @@
       $('ivAudioInfo').textContent = `🎵 ${f.name} — ${formatTime(audio.duration)}`;
       trim.setAudio(audio);
       preview();
+      loud.refresh();
     } catch (e) {
       audio = null;
       trim.setAudio(null);
@@ -309,7 +311,7 @@
     trim.stop();
     audioCtx().resume(); // inside the tap, before any await (iOS)
     await ensureFonts();
-    const sc = scene();
+    const sc = { ...scene(), gain: await loud.gain() };
     canvas.width = sc.width; canvas.height = sc.height;
     $('ivPlay').textContent = '■ Dừng';
     player.play(sc, (t) => { if (t < 0) $('ivPlay').textContent = '▶ Xem thử'; });
@@ -332,7 +334,7 @@
       player.stop();
       $('ivPlay').textContent = '▶ Xem thử';
       await ensureFonts();
-      return scene();
+      return { ...scene(), gain: await loud.gain() };
     },
   });
 

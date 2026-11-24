@@ -148,6 +148,37 @@ const SelfTest = (() => {
       if (slow.length) throw new Error(`${n} kiểu · chậm: ${slow.join(', ')}`);
       return `${n} kiểu + 6 hiệu ứng · khung chậm nhất ${worst.toFixed(1)} ms (360×640)`;
     }, 'optional'],
+    ['Đo độ to & chuẩn hoá −14 LUFS', async () => {
+      // a 997 Hz sine at −20 dBFS on both channels is −20 LUFS (BS.1770): the gain must reach −14 LUFS
+      const sr = 48000, n = sr * 3, x = new Float32Array(n);
+      for (let i = 0; i < n; i++) x[i] = 0.1 * Math.sin((2 * Math.PI * 997 * i) / sr);
+      const m = Core.loudness([x, x], sr);
+      if (Math.abs(m.lufs + 20) > 0.2) throw new Error(`đo được ${m.lufs.toFixed(2)} LUFS, mong đợi −20`);
+      const g = Core.normGain(m, -14);
+      const after = Core.loudness([x.map((v) => v * g.gain), x.map((v) => v * g.gain)], sr).lufs;
+      if (Math.abs(after + 14) > 0.2) throw new Error(`sau chuẩn hoá ${after.toFixed(2)} LUFS`);
+      return `${m.lufs.toFixed(1)} → ${after.toFixed(1)} LUFS`;
+    }, 'required'],
+    ['Tách âm thanh ra WAV và nghe lại được', async () => {
+      const b = await decodeAudioFile(makeWav(1, 44100, 440));
+      const wav = Core.encodeWav([b.getChannelData(0)], b.sampleRate, 0, b.length, 1);
+      const back = await decodeAudioFile(new File([wav], 'x.wav', { type: 'audio/wav' }));
+      if (Math.abs(back.duration - b.duration) > 0.01) throw new Error(`dài ${back.duration}s`);
+      if (Core.rms(back.getChannelData(0)) < 0.1) throw new Error('im lặng');
+      return `${formatBytes(wav.length)}, ${back.duration.toFixed(2)}s`;
+    }, 'required'],
+    ['Tạo ảnh bìa YouTube JPG ≤ 2 MB', async () => {
+      const prev = $('thSize').value;
+      $('thSize').value = '1920x1080';
+      try {
+        const r = await Thumb.exportBlob();
+        if (!r.fits || r.blob.size > 2 * 1048576) throw new Error(`${formatBytes(r.blob.size)} vượt 2 MB`);
+        const { w, h, url } = await loadImgFromBlob(r.blob);
+        URL.revokeObjectURL(url);
+        if (w !== 1920 || h !== 1080) throw new Error(`${w}×${h}`);
+        return `${w}×${h}, ${formatBytes(r.blob.size)}, chất lượng ${Math.round(r.q * 100)}%`;
+      } finally { $('thSize').value = prev; }
+    }, 'required'],
     ['Chia sẻ file (lưu vào Ảnh / gửi TikTok)', async () => {
       if (!canShareFiles) throw new Error('không có — dùng nút Tải');
       return 'OK';

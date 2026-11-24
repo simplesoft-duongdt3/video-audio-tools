@@ -818,7 +818,292 @@
     return { title: 'Xuất video bị lỗi', hint: 'Bấm “Thử lại”. Nếu vẫn lỗi, bấm “Sao chép thông tin lỗi” và gửi cho chúng tôi.' };
   }
 
+  /* ---------------- creator tools: loudness (ITU-R BS.1770-4 / EBU R128) ---------------- */
+  /** K-weighting biquads for a sample rate (libebur128 design: exact BS.1770 values at 48 kHz): [shelf, highpass]. */
+  function kWeighting(sr) {
+    let K = Math.tan((Math.PI * 1681.974450955533) / sr), Q = 0.7071752369554196;
+    const Vh = Math.pow(10, 3.999843853973347 / 20), Vb = Math.pow(Vh, 0.4996667741545416);
+    let a0 = 1 + K / Q + K * K;
+    const shelf = { b: [(Vh + (Vb * K) / Q + K * K) / a0, (2 * (K * K - Vh)) / a0, (Vh - (Vb * K) / Q + K * K) / a0], a: [(2 * (K * K - 1)) / a0, (1 - K / Q + K * K) / a0] };
+    K = Math.tan((Math.PI * 38.13547087602444) / sr); Q = 0.5003270373238773;
+    a0 = 1 + K / Q + K * K;
+    const hp = { b: [1, -2, 1], a: [(2 * (K * K - 1)) / a0, (1 - K / Q + K * K) / a0] };
+    return [shelf, hp];
+  }
+
+  /**
+   * Integrated loudness (LUFS, gated) and sample peak of channels[*][from, to).
+   * Pass the channels exactly as they will be heard (a mono song exported as stereo → [ch0, ch0]).
+   * → { lufs (-Infinity for silence), peak (linear 0..1+) }. One pass, 100 ms segments, no copies of the audio.
+   */
+  function loudness(channels, sr, from = 0, to) {
+    const len = channels[0] ? channels[0].length : 0;
+    from = Math.max(0, Math.floor(from)); to = Math.min(len, to == null ? len : Math.floor(to));
+    const seg = Math.max(1, Math.round(sr * 0.1)), nSeg = Math.max(1, Math.ceil((to - from) / seg));
+    const segSum = new Float64Array(nSeg), segLen = new Float64Array(nSeg);
+    const [f1, f2] = kWeighting(sr);
+    let peak = 0;
+    for (const x of channels) {
+      let a1 = 0, a2 = 0, b1 = 0, b2 = 0; // filter states (direct form I)
+      let c1 = 0, c2 = 0, d1 = 0, d2 = 0;
+      for (let i = from; i < to; i++) {
+        const v = x[i];
+        const av = v < 0 ? -v : v; if (av > peak) peak = av;
+        const y = f1.b[0] * v + f1.b[1] * a1 + f1.b[2] * a2 - f1.a[0] * b1 - f1.a[1] * b2;
+        a2 = a1; a1 = v; b2 = b1; b1 = y;
+        const z = f2.b[0] * y + f2.b[1] * c1 + f2.b[2] * c2 - f2.a[0] * d1 - f2.a[1] * d2;
+        c2 = c1; c1 = y; d2 = d1; d1 = z;
+        segSum[((i - from) / seg) | 0] += z * z;
+      }
+    }
+    for (let s = 0; s < nSeg; s++) segLen[s] = Math.min(seg, to - from - s * seg);
+    // 400 ms blocks (4 segments) with 75 % overlap; a clip shorter than one block is one block
+    const blocks = [];
+    const nb = nSeg >= 4 ? nSeg - 3 : 1;
+    for (let j = 0; j < nb; j++) {
+      let s = 0, n = 0;
+      for (let k = j; k < Math.min(nSeg, j + 4); k++) { s += segSum[k]; n += segLen[k]; }
+      if (n > 0) blocks.push(s / n);
+    }
+    const L = (z) => -0.691 + 10 * Math.log10(z);
+    const abs = blocks.filter((z) => z > 0 && L(z) > -70);
+    if (!abs.length) return { lufs: -Infinity, peak };
+    const rel = L(abs.reduce((a, b) => a + b, 0) / abs.length) - 10;
+    const kept = abs.filter((z) => L(z) > rel);
+    return { lufs: L(kept.reduce((a, b) => a + b, 0) / kept.length), peak };
+  }
+
+  /**
+   * Incremental loudness index of a whole track: K-weighted energy and sample peak per 100 ms segment, built
+   * once (in slices, so a 1-hour podcast never freezes the page) — then any range is measured instantly.
+   * idx.step(maxFrames) → true when done. loudnessRange(idx, fromSec, toSec) → { lufs, peak }.
+   */
+  function loudnessIndex(channels, sr) {
+    const len = channels[0] ? channels[0].length : 0;
+    const seg = Math.max(1, Math.round(sr * 0.1)), nSeg = Math.max(1, Math.ceil(len / seg));
+    const sum = new Float64Array(nSeg), peak = new Float32Array(nSeg);
+    const [f1, f2] = kWeighting(sr);
+    const st = channels.map(() => new Float64Array(8)); // filter states per channel
+    let pos = 0;
+    function step(maxFrames = Infinity) {
+      const end = Math.min(len, pos + maxFrames);
+      channels.forEach((x, c) => {
+        const S = st[c];
+        let a1 = S[0], a2 = S[1], b1 = S[2], b2 = S[3], c1 = S[4], c2 = S[5], d1 = S[6], d2 = S[7];
+        for (let i = pos; i < end; i++) {
+          const v = x[i], k = (i / seg) | 0;
+          const av = v < 0 ? -v : v; if (av > peak[k]) peak[k] = av;
+          const y = f1.b[0] * v + f1.b[1] * a1 + f1.b[2] * a2 - f1.a[0] * b1 - f1.a[1] * b2;
+          a2 = a1; a1 = v; b2 = b1; b1 = y;
+          const z = f2.b[0] * y + f2.b[1] * c1 + f2.b[2] * c2 - f2.a[0] * d1 - f2.a[1] * d2;
+          c2 = c1; c1 = y; d2 = d1; d1 = z;
+          sum[k] += z * z;
+        }
+        S[0] = a1; S[1] = a2; S[2] = b1; S[3] = b2; S[4] = c1; S[5] = c2; S[6] = d1; S[7] = d2;
+      });
+      pos = end;
+      return pos >= len;
+    }
+    return { step, sr, seg, len, sum, peak, get done() { return pos >= len; }, get progress() { return len ? pos / len : 1; } };
+  }
+
+  /** Gated loudness of [fromSec, toSec) from an index (segment resolution: 100 ms). */
+  function loudnessRange(idx, fromSec = 0, toSec) {
+    const n = idx.sum.length;
+    const a = Math.max(0, Math.min(n - 1, Math.floor((fromSec * idx.sr) / idx.seg)));
+    const b = Math.max(a + 1, Math.min(n, Math.ceil(((toSec == null ? idx.len / idx.sr : toSec) * idx.sr) / idx.seg)));
+    let peak = 0;
+    for (let k = a; k < b; k++) if (idx.peak[k] > peak) peak = idx.peak[k];
+    const segLen = (k) => Math.min(idx.seg, idx.len - k * idx.seg);
+    const blocks = [];
+    const nb = b - a >= 4 ? b - a - 3 : 1;
+    for (let j = 0; j < nb; j++) {
+      let s = 0, m = 0;
+      for (let k = a + j; k < Math.min(b, a + j + 4); k++) { s += idx.sum[k]; m += segLen(k); }
+      if (m > 0) blocks.push(s / m);
+    }
+    const L = (z) => -0.691 + 10 * Math.log10(z);
+    const abs = blocks.filter((z) => z > 0 && L(z) > -70);
+    if (!abs.length) return { lufs: -Infinity, peak };
+    const rel = L(abs.reduce((x, y) => x + y, 0) / abs.length) - 10;
+    const kept = abs.filter((z) => L(z) > rel);
+    return { lufs: L(kept.reduce((x, y) => x + y, 0) / kept.length), peak };
+  }
+
+  /**
+   * The two channels a listener hears, as the export mixes them (Web Audio "speakers" down-mix):
+   * mono → [m, m]; stereo as is; quad → 0.5·(L+SL), 0.5·(R+SR); 5.1 → L + 0.7071·(C+SL), R + 0.7071·(C+SR)
+   * (LFE dropped); other counts → the first two ("discrete"). Only >2 channels allocate new arrays.
+   */
+  function downmixStereo(ch) {
+    const n = ch.length;
+    if (n === 1) return [ch[0], ch[0]];
+    if (n === 2 || (n !== 4 && n !== 6)) return [ch[0], ch[1]];
+    const len = ch[0].length, L = new Float32Array(len), R = new Float32Array(len);
+    if (n === 4) for (let i = 0; i < len; i++) { L[i] = 0.5 * (ch[0][i] + ch[2][i]); R[i] = 0.5 * (ch[1][i] + ch[3][i]); }
+    else { const k = Math.SQRT1_2; for (let i = 0; i < len; i++) { L[i] = ch[0][i] + k * (ch[2][i] + ch[4][i]); R[i] = ch[1][i] + k * (ch[2][i] + ch[5][i]); } }
+    return [L, R];
+  }
+
+  /** Loudness targets (integrated LUFS) the creator can pick. */
+  const LOUDNESS_TARGETS = { social: -14, podcast: -16 };
+
+  /**
+   * Gain that brings {lufs, peak} to `target` LUFS without the sample peak going over `ceilingDb` (dBFS).
+   * Silence / unmeasurable audio → gain 1. Never boosts more than +20 dB (it would only raise the noise).
+   * → { gain, db, limited }  (limited = the peak ceiling, not the target, decided the gain)
+   */
+  function normGain(m, target = -14, ceilingDb = -1.5) {
+    if (!m || !isFinite(m.lufs) || !(m.peak > 0)) return { gain: 1, db: 0, limited: false };
+    const want = Math.min(Math.pow(10, (target - m.lufs) / 20), 10);
+    const cap = Math.pow(10, ceilingDb / 20) / m.peak;
+    const gain = Math.min(want, cap);
+    return { gain, db: 20 * Math.log10(gain), limited: cap < want };
+  }
+
+  /* ---------------- creator tools: platform safe zones (1080×1920 vertical) ---------------- */
+  /**
+   * Parts of a vertical video covered by each app's buttons / caption / username, as fractions of the frame.
+   * No platform publishes these for organic posts: values are the conservative end of measured guides (2025–26).
+   */
+  const SAFE_ZONES = {
+    tiktok: { label: 'TikTok', top: 0.068, bottom: 0.25, left: 0.056, right: 0.14 },
+    reels: { label: 'Reels', top: 0.14, bottom: 0.35, left: 0.056, right: 0.11 },
+    shorts: { label: 'Shorts', top: 0.0625, bottom: 0.3, left: 0.056, right: 0.18 },
+  };
+  /** Safe rectangle (px) of a W×H frame for a platform, or null (unknown platform / not a vertical frame). */
+  function safeRect(platform, W, H) {
+    const z = SAFE_ZONES[platform];
+    if (!z || !(W > 0 && H > 0) || W / H > 0.8) return null;
+    const x = Math.round(W * z.left), y = Math.round(H * z.top);
+    return { x, y, w: Math.round(W * (1 - z.right)) - x, h: Math.round(H * (1 - z.bottom)) - y };
+  }
+
+  /** Where an iw×ih picture is drawn inside a bw×bh box with object-fit: contain → {x, y, w, h}. */
+  function containRect(iw, ih, bw, bh) {
+    if (!(iw > 0 && ih > 0 && bw > 0 && bh > 0)) return { x: 0, y: 0, w: 0, h: 0 };
+    const s = Math.min(bw / iw, bh / ih), w = iw * s, h = ih * s;
+    return { x: (bw - w) / 2, y: (bh - h) / 2, w, h };
+  }
+
+  /* ---------------- creator tools: WAV ---------------- */
+  /** 16-bit PCM WAV of channels[*][from, to) × gain (clipped, rounded). → Uint8Array */
+  function encodeWav(channels, sr, from = 0, to, gain = 1) {
+    const nch = channels.length, len = channels[0].length;
+    from = Math.max(0, Math.floor(from)); to = Math.min(len, to == null ? len : Math.floor(to));
+    const n = Math.max(0, to - from), bytes = n * nch * 2;
+    const buf = new ArrayBuffer(44 + bytes), v = new DataView(buf);
+    const str = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+    str(0, 'RIFF'); v.setUint32(4, 36 + bytes, true); str(8, 'WAVE'); str(12, 'fmt ');
+    v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, nch, true); v.setUint32(24, sr, true);
+    v.setUint32(28, sr * nch * 2, true); v.setUint16(32, nch * 2, true); v.setUint16(34, 16, true);
+    str(36, 'data'); v.setUint32(40, bytes, true);
+    const out = new Int16Array(buf, 44, n * nch);
+    for (let c = 0; c < nch; c++) {
+      const x = channels[c];
+      for (let i = 0, o = c; i < n; i++, o += nch) {
+        let s = x[from + i] * gain;
+        s = s > 1 ? 1 : s < -1 ? -1 : s;
+        out[o] = Math.round(s < 0 ? s * 32768 : s * 32767);
+      }
+    }
+    return new Uint8Array(buf);
+  }
+
+  /**
+   * The same WAV as encodeWav, as a list of parts (header + ~10-second PCM chunks): a Blob made from them never
+   * needs one huge contiguous copy of a long recording in memory.
+   */
+  function wavParts(channels, sr, from = 0, to, gain = 1, chunkSec = 10) {
+    const nch = channels.length, len = channels[0].length;
+    from = Math.max(0, Math.floor(from)); to = Math.min(len, to == null ? len : Math.floor(to));
+    const n = Math.max(0, to - from);
+    const head = encodeWav(channels.map(() => new Float32Array(0)), sr).slice(0, 44);
+    const v = new DataView(head.buffer);
+    v.setUint32(4, 36 + n * nch * 2, true); v.setUint32(40, n * nch * 2, true);
+    const parts = [head], step = Math.max(1, Math.round(chunkSec * sr));
+    for (let p = from; p < to; p += step) parts.push(encodeWav(channels, sr, p, Math.min(to, p + step), gain).subarray(44));
+    return parts;
+  }
+
+  /* ---------------- creator tools: thumbnails & captions ---------------- */
+  /** "Cách *kiếm tiền* online" → [{t:'Cách ', hi:false}, {t:'kiếm tiền', hi:true}, {t:' online', hi:false}] */
+  function parseHighlight(text) {
+    const out = [];
+    const re = /\*([^*\n]+)\*/g;
+    let last = 0, m;
+    const s = String(text);
+    while ((m = re.exec(s))) {
+      if (m.index > last) out.push({ t: s.slice(last, m.index), hi: false });
+      out.push({ t: m[1], hi: true });
+      last = m.index + m[0].length;
+    }
+    if (last < s.length) out.push({ t: s.slice(last), hi: false });
+    return out;
+  }
+
+  /**
+   * Binary-search the encoder quality so the file stays ≤ maxBytes. encode(q) → Promise<Blob-like {size}>.
+   * → { blob, q, fits } (the smallest attempt when even the lowest quality is too big). At most ~7 encodes.
+   */
+  async function fitQuality(encode, maxBytes, lo = 0.5, hi = 0.95) {
+    let best = await encode(hi);
+    if (best.size <= maxBytes) return { blob: best, q: hi, fits: true };
+    let smallest = { blob: best, q: hi }, okBlob = null, okQ = 0;
+    for (let i = 0; i < 6; i++) {
+      const q = Math.round(((lo + hi) / 2) * 1000) / 1000;
+      const b = await encode(q);
+      if (b.size < smallest.blob.size) smallest = { blob: b, q };
+      if (b.size <= maxBytes) { okBlob = b; okQ = q; lo = q; } else hi = q;
+    }
+    if (!okBlob) {
+      const b = await encode(lo);
+      if (b.size <= maxBytes) return { blob: b, q: lo, fits: true };
+      return { blob: b.size < smallest.blob.size ? b : smallest.blob, q: b.size < smallest.blob.size ? lo : smallest.q, fits: false };
+    }
+    return { blob: okBlob, q: okQ, fits: true };
+  }
+
+  /** Character limits of the places creators type text (2026). */
+  const TEXT_LIMITS = {
+    ytTitle: { label: 'Tiêu đề YouTube', max: 100 },
+    ytDesc: { label: 'Mô tả YouTube', max: 5000 },
+    tiktok: { label: 'Caption TikTok', max: 4000 },
+    reels: { label: 'Caption Reels', max: 2200 },
+  };
+  /**
+   * Counts for a caption: characters as people see them (emoji = 1), #hashtags (unique, case-insensitive)
+   * and the warnings that matter. → { chars, hashtags: [...], over: {key: n}, warnings: [...] }
+   */
+  function captionStats(text) {
+    const s = String(text || '');
+    const chars = graphemes(s).length;
+    const tags = [];
+    const seen = new Set();
+    for (const m of s.matchAll(/#([\p{L}\p{N}_]+)/gu)) {
+      const k = m[1].toLowerCase();
+      if (!seen.has(k)) { seen.add(k); tags.push('#' + m[1]); }
+    }
+    const over = {};
+    for (const [k, l] of Object.entries(TEXT_LIMITS)) if (chars > l.max) over[k] = chars - l.max;
+    const warnings = [];
+    if (tags.length > 60) warnings.push('YouTube bỏ qua TẤT CẢ hashtag khi có hơn 60 hashtag.');
+    else if (tags.length > 15) warnings.push('Nhiều hashtag quá dễ bị xem là spam — nên dùng 3–5 hashtag sát nội dung.');
+    if (/(^|\s)#(\s|$)/u.test(s)) warnings.push('Có dấu # đứng một mình hoặc hashtag bị cách — hashtag không được có dấu cách.');
+    return { chars, hashtags: tags, over, warnings };
+  }
+
+  /** Files bigger than this are refused before reading them into memory (a phone tab would crash instead). */
+  const MAX_FILE_BYTES = { image: 150 * 1048576, audio: 1024 * 1048576 };
+  /** → error message (Vietnamese) or null. */
+  function checkFileSize(file, kind) {
+    const max = MAX_FILE_BYTES[kind];
+    if (!max || !file || !(file.size > max)) return null;
+    return `"${file.name}" quá lớn (${formatBytes(file.size)}) — tối đa ${formatBytes(max)} cho ${kind === 'image' ? 'ảnh' : 'audio/video'}.`;
+  }
+
   return {
+    kWeighting, loudness, loudnessIndex, loudnessRange, downmixStereo, wavParts, LOUDNESS_TARGETS, normGain, SAFE_ZONES, safeRect, containRect, encodeWav, parseHighlight, fitQuality, TEXT_LIMITS, captionStats, MAX_FILE_BYTES, checkFileSize,
     audioFade, fadeGain, exportEstimate, friendlyError, FILTERS, applyFilter, avGeometry, trimDrag, findSilences, silenceCuts, removeRanges, envelope, envAt, bassOnsets, punchAt, bassPush, prng, bandGroups, particleAt, lifeAlpha, ripples, slowWave, mixHex,
     formatBytes, formatTime, baseName, detectPlatform,
     isHeic, isHeicBrand, looksLikeAudio, AUDIO_EXT, fitArea,

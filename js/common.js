@@ -172,9 +172,10 @@ function resultCard(container, { blob, name, origSize, info, previewUrl }) {
   }
   card.innerHTML = `
     <div class="thumb" style="background-image:url('${url}')"></div>
-    <div class="meta"><b></b><br>${origSize ? formatBytes(origSize) + ' → ' : ''}${formatBytes(blob.size)}${delta}${info ? '<br>' + info : ''}</div>
+    <div class="meta"><b></b><br>${origSize ? formatBytes(origSize) + ' → ' : ''}${formatBytes(blob.size)}${delta}${info ? '<br><span data-a="info"></span>' : ''}</div>
     <div class="actions"><button data-a="dl">Tải</button>${canShareFiles ? '<button data-a="share">Chia sẻ</button>' : ''}</div>`;
   card.querySelector('b').textContent = name;
+  if (info) card.querySelector('[data-a=info]').textContent = info; // plain text, never HTML
   card.querySelector('[data-a=dl]').onclick = () => download(blob, name);
   const sh = card.querySelector('[data-a=share]');
   if (sh) sh.onclick = () => shareFile(blob, name);
@@ -259,8 +260,17 @@ function oncePerFrame(fn) {
 /* ---------- file inputs + drag & drop ---------- */
 function onFiles(inputId, cb) {
   const input = $(inputId);
+  const kind = input.dataset.kind || (input.hasAttribute('data-audio') ? 'audio' : 'image');
+  /** Refuse huge files before reading them into memory (a phone tab would reload instead of showing an error). */
+  // data-kind="media": photos get the image limit, videos the audio/video limit
+  const kindOf = (f) => (kind !== 'media' ? kind : /^(video|audio)\//.test(f.type) || /\.(mp4|mov|m4v|webm|mkv)$/i.test(f.name) ? 'audio' : 'image');
+  const guarded = (files) => {
+    const bad = files.map((f) => Core.checkFileSize(f, kindOf(f))).find(Boolean);
+    if (bad) { toast(bad, 5000); files = files.filter((f) => !Core.checkFileSize(f, kindOf(f))); }
+    if (files.length) cb(files);
+  };
   input.addEventListener('change', () => {
-    if (input.files.length) cb([...input.files]);
+    if (input.files.length) guarded([...input.files]);
     input.value = '';
   });
   const drop = document.querySelector(`.drop[data-input="${inputId}"]`);
@@ -274,7 +284,7 @@ function onFiles(inputId, cb) {
   drop.addEventListener('drop', (ev) => {
     ev.preventDefault();
     const files = [...ev.dataTransfer.files];
-    if (files.length) cb(input.multiple ? files : files.slice(0, 1));
+    if (files.length) guarded(input.multiple ? files : files.slice(0, 1));
   });
 }
 
@@ -351,6 +361,11 @@ function setProgress(el, frac, text) {
 }
 
 /* ---------- tabs ---------- */
+/** Height the tab bar covers at the top of the screen (0 on desktop, where it is a sidebar). */
+function tabsCover() {
+  const t = $('tabs');
+  return t && getComputedStyle(t).flexDirection !== 'column' ? t.getBoundingClientRect().bottom : 0;
+}
 /** Show one panel (a tool tab, or a footer page like #about / #selftest). */
 function showPanel(name) {
   const panel = $('tab-' + name);
@@ -375,12 +390,14 @@ tabButtons.forEach((b, i) => {
     showPanel(b.dataset.tab);
     history.replaceState(null, '', '#' + b.dataset.tab);
     // start the new tab at its top (it kept the previous tab's scroll position, e.g. its bottom)
-    const top = $('tab-' + b.dataset.tab).getBoundingClientRect().top + window.scrollY - $('tabs').offsetHeight - 8;
+    const top = $('tab-' + b.dataset.tab).getBoundingClientRect().top + window.scrollY - tabsCover() - 8;
     if (window.scrollY > top) window.scrollTo(0, Math.max(0, top));
   };
   // arrow keys move between tabs (ARIA tabs pattern)
   b.onkeydown = (e) => {
-    const d = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
+    // horizontal bar: ← →; desktop sidebar (vertical): ↑ ↓ too; Home / End jump to the first / last tool
+    const n0 = { Home: -i, End: tabButtons.length - 1 - i }[e.key];
+    const d = n0 !== undefined ? n0 : { ArrowRight: 1, ArrowLeft: -1, ArrowDown: 1, ArrowUp: -1 }[e.key];
     if (!d) return;
     e.preventDefault();
     const n = tabButtons[(i + d + tabButtons.length) % tabButtons.length];
@@ -388,6 +405,13 @@ tabButtons.forEach((b, i) => {
     n.click();
   };
 });
+/* the tab bar is a vertical sidebar on desktop: tell screen readers which arrow keys apply */
+const tabsOrientation = () => $('tabs').setAttribute('aria-orientation', getComputedStyle($('tabs')).flexDirection === 'column' ? 'vertical' : 'horizontal');
+tabsOrientation();
+window.addEventListener('resize', tabsOrientation);
+/* "Bỏ qua menu": move focus to the tool without putting #main into the address (it is not a tab) */
+document.querySelector('.skip').addEventListener('click', (e) => { e.preventDefault(); $('main').focus(); });
+
 const fromHash = () => {
   const h = location.hash.slice(1);
   if (!h || h === 'selftest' || !showPanel(h)) return;
@@ -412,3 +436,151 @@ document.querySelectorAll('.split .preview').forEach((pv) => {
   b.onclick = () => { const on = pv.classList.toggle('big'); b.setAttribute('aria-pressed', on); };
   pv.appendChild(b);
 });
+
+/* ---------- loudness normalisation (−14 LUFS TikTok / YouTube, −16 LUFS podcast) ---------- */
+/**
+ * Loudness.mount('avLoud', () => ({ audio, offset, duration })) → { gain(), refresh() }.
+ * Measures only the chosen clip (cached per clip), shows "−22,8 LUFS → +8,8 dB" under the select,
+ * and gain() is what the export (and the preview player) multiplies the sound by.
+ */
+const Loudness = (() => {
+  /** Yield to the event loop without timer clamping (background tabs clamp setTimeout to ≥ 1 s). */
+  const yieldTask = (() => {
+    const ch = new MessageChannel(), q = [];
+    ch.port1.onmessage = () => q.shift()();
+    return () => new Promise((r) => { q.push(r); ch.port2.postMessage(0); });
+  })();
+  const cache = new WeakMap(); // AudioBuffer → { stereo, mono } index jobs
+  const nf = (v) => v.toFixed(1).replace('.', ',').replace('-', '−');
+  /**
+   * Loudness index of a song, built ONCE in 5-second slices (a 1-hour podcast never freezes the page); every
+   * range after that is measured instantly. mono = measure the single channel as written to a mono WAV;
+   * otherwise the two channels exactly as exported (mono → both sides, 5.1 / quad down-mixed like Web Audio).
+   */
+  function job(buf, mono) {
+    let e = cache.get(buf);
+    if (!e) cache.set(buf, (e = {}));
+    const key = mono ? 'mono' : 'stereo';
+    if (!e[key]) {
+      const ch = Array.from({ length: buf.numberOfChannels }, (_, i) => buf.getChannelData(i));
+      const idx = Core.loudnessIndex(mono ? [ch[0]] : Core.downmixStereo(ch), buf.sampleRate);
+      const slice = buf.sampleRate * 5;
+      e[key] = { idx, ready: (async () => { while (!idx.step(slice)) await yieldTask(); return idx; })() };
+    }
+    return e[key];
+  }
+  /** → Promise<{ m, target, gain, db, limited }> for a clip, or null without audio. */
+  async function compute(mode, c) {
+    if (!c || !c.audio) return null;
+    const target = Core.LOUDNESS_TARGETS[mode];
+    if (!target) return { m: null, target: 0, gain: 1, db: 0, limited: false }; // "off": nothing to measure
+    const idx = await job(c.audio, !!c.mono).ready;
+    const off = +c.offset || 0, dur = c.duration > 0 ? c.duration : c.audio.duration - off;
+    const m = Core.loudnessRange(idx, off, off + dur);
+    return { m, target, ...Core.normGain(m, target) };
+  }
+  function describe(r) {
+    if (!r) return '';
+    if (!r.target) return 'Giữ nguyên âm lượng như file gốc.';
+    if (!isFinite(r.m.lufs)) return 'Đoạn này gần như im lặng — giữ nguyên âm lượng.';
+    if (Math.abs(r.db) < 0.5) return `Đoạn đã chọn đã đạt chuẩn (${nf(r.m.lufs)} LUFS).`;
+    const dir = r.db > 0 ? `tăng ${nf(r.db)} dB` : `giảm ${nf(-r.db)} dB`;
+    return `Đoạn đã chọn ${nf(r.m.lufs)} LUFS → ${dir}` + (r.limited ? ' (dừng sớm để tiếng không bị rè)' : ` (đạt ${nf(r.target)} LUFS)`);
+  }
+  /**
+   * Loudness.mount('avLoud', () => ({ audio, offset, duration, mono? })) → { gain(), text(), refresh() }.
+   * gain() / text() are async and always use the CURRENT clip (never a stale debounced value).
+   */
+  function mount(selId, get) {
+    const sel = $(selId);
+    const info = document.createElement('div');
+    info.className = 'hint';
+    info.id = selId + 'Info';
+    info.setAttribute('aria-live', 'polite');
+    sel.closest('label').after(info);
+    const now = () => compute(sel.value, get());
+    let tm = 0, seq = 0;
+    const refresh = () => {
+      clearTimeout(tm);
+      tm = setTimeout(async () => {
+        const my = ++seq, c = get();
+        if (c && c.audio && Core.LOUDNESS_TARGETS[sel.value] && !job(c.audio, !!c.mono).idx.done) info.textContent = 'Đang đo âm lượng…';
+        try { const t = describe(await now()); if (my === seq) info.textContent = t; } catch (e) { if (my === seq) info.textContent = ''; }
+      }, 200);
+    };
+    sel.closest('.panel').addEventListener('change', refresh);
+    sel.closest('.panel').addEventListener('input', refresh);
+    return {
+      gain: async () => { const r = await now(); return r ? r.gain : 1; },
+      text: async () => describe(await now()),
+      refresh,
+      get info() { return info.textContent; },
+    };
+  }
+  return { mount, compute, describe, job };
+})();
+
+/* ---------- safe-zone overlay: where TikTok / Reels / Shorts buttons and captions cover a 9:16 video ---------- */
+/**
+ * A row of chips under every preview: Tắt / TikTok / Reels / Shorts. The overlay is HTML on top of the canvas,
+ * so it is never drawn into the exported video. One choice for all tabs (kept in memory only).
+ */
+const SafeZone = (() => {
+  let current = 'off';
+  const views = [];
+  function layout(v) {
+    const c = v.canvas, r = Core.containRect(c.width, c.height, c.clientWidth, c.clientHeight);
+    const safe = Core.safeRect(current, c.width, c.height);
+    v.pv.classList.toggle('sz-na', !Core.safeRect('tiktok', c.width, c.height)); // phones hide the chips for 16:9
+    v.ov.hidden = current === 'off' || !safe || !c.clientWidth;
+    v.note.hidden = !(current !== 'off' && !safe);
+    if (v.ov.hidden) return;
+    const k = r.w / c.width;
+    Object.assign(v.ov.style, { left: c.offsetLeft + c.clientLeft + r.x + 'px', top: c.offsetTop + c.clientTop + r.y + 'px', width: r.w + 'px', height: r.h + 'px' });
+    Object.assign(v.safe.style, { left: safe.x * k + 'px', top: safe.y * k + 'px', width: safe.w * k + 'px', height: safe.h * k + 'px' });
+    v.tag.textContent = Core.SAFE_ZONES[current].label;
+  }
+  const relayout = () => views.forEach(layout);
+  function set(name) {
+    current = Core.SAFE_ZONES[name] ? name : 'off';
+    views.forEach((v) => v.chips.querySelectorAll('button').forEach((b) => {
+      const on = b.dataset.sz === current;
+      b.classList.toggle('active', on);
+      b.setAttribute('aria-pressed', on);
+    }));
+    relayout();
+  }
+  document.querySelectorAll('.split .preview').forEach((pv) => {
+    const canvas = pv.querySelector('canvas');
+    if (!canvas) return;
+    const ov = document.createElement('div');
+    ov.className = 'sz-overlay';
+    ov.hidden = true;
+    ov.setAttribute('aria-hidden', 'true');
+    ov.innerHTML = '<div class="sz-safe"><span class="sz-tag"></span></div>';
+    canvas.after(ov);
+    const chips = document.createElement('div');
+    chips.className = 'chips sz-chips';
+    chips.setAttribute('role', 'group');
+    chips.setAttribute('aria-label', 'Hiện vùng bị giao diện ứng dụng che');
+    chips.innerHTML = '<span class="sz-label">Vùng bị che:</span>' +
+      [['off', 'Tắt'], ...Object.entries(Core.SAFE_ZONES).map(([k, z]) => [k, z.label])]
+        .map(([k, l]) => `<button type="button" data-sz="${k}" aria-pressed="${k === 'off'}"${k === 'off' ? ' class="active"' : ''}>${l}</button>`).join('');
+    const note = document.createElement('p');
+    note.className = 'hint sz-note';
+    note.hidden = true;
+    note.textContent = 'Vùng bị che chỉ áp dụng cho khung dọc 9:16 (TikTok, Reels, Shorts).';
+    const anchor = pv.querySelector('.scrub') || canvas;
+    (anchor === canvas ? ov : anchor).after(chips);
+    chips.after(note);
+    chips.addEventListener('click', (e) => { const b = e.target.closest('button[data-sz]'); if (b) set(b.dataset.sz); });
+    const v = { pv, canvas, ov, chips, note, safe: ov.firstChild, tag: ov.querySelector('.sz-tag') };
+    views.push(v);
+    if (window.ResizeObserver) new ResizeObserver(() => layout(v)).observe(canvas);
+    // the canvas resolution changes when the frame size changes (its CSS box may not)
+    new MutationObserver(() => layout(v)).observe(canvas, { attributes: true, attributeFilter: ['width', 'height'] });
+  });
+  window.addEventListener('resize', relayout);
+  window.addEventListener('tabshown', () => requestAnimationFrame(relayout));
+  return { set, get current() { return current; }, relayout };
+})();

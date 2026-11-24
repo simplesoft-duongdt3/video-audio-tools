@@ -34,14 +34,15 @@ const VideoEngine = (() => {
   }
 
   /** Fallback for unusual sources (>2 channels or odd sample rates): resample the clip at once (uses more memory). */
-  async function prepareAudio(buffer, offset, duration) {
+  async function prepareAudio(buffer, offset, duration, level = 1) {
     const len = Math.max(1, Math.ceil(duration * SR));
     const oac = new OfflineCtx(2, len, SR);
     const src = oac.createBufferSource();
     src.buffer = buffer;
     const g = oac.createGain();
     const { end, fade } = Core.audioFade(buffer.duration, offset, duration);
-    g.gain.setValueAtTime(1, Math.max(0, end - fade));
+    g.gain.setValueAtTime(level, 0);
+    g.gain.setValueAtTime(level, Math.max(0, end - fade));
     g.gain.linearRampToValueAtTime(0, end);
     src.connect(g).connect(oac.destination);
     src.start(0, offset, duration);
@@ -53,10 +54,10 @@ const VideoEngine = (() => {
    * Common sources (44.1/48 kHz, mono/stereo) are copied straight from the decoded song: no second full-length
    * copy is held in memory (a 10-minute song used to need ~230 MB more while exporting).
    */
-  async function* audioChunks(buffer, offset, duration) {
+  async function* audioChunks(buffer, offset, duration, level = 1) {
     const sr = buffer.sampleRate, nch = buffer.numberOfChannels;
     if (!((sr === 44100 || sr === 48000) && nch <= 2)) {
-      const ab = await prepareAudio(buffer, offset, duration);
+      const ab = await prepareAudio(buffer, offset, duration, level);
       for (let pos = 0; pos < ab.length; pos += SR) yield sliceAudio(ab, pos, Math.min(ab.length, pos + SR));
       return;
     }
@@ -74,6 +75,7 @@ const VideoEngine = (() => {
         buf.fill(0);
         const a = Math.min(src[c].length, first + pos), b = Math.min(src[c].length, first + pos + n);
         if (b > a) buf.set(src[c].subarray(a, b));
+        if (level !== 1) for (let i = 0; i < n; i++) buf[i] *= level; // loudness normalisation (gain stays under the peak ceiling)
         if (pos + n > fadeFrom) for (let i = Math.max(0, fadeFrom - pos); i < n; i++) buf[i] *= Core.fadeGain((pos + i) / sr, end, fade);
         out.copyToChannel(buf, c);
       }
@@ -158,7 +160,7 @@ const VideoEngine = (() => {
       let audioFailure = null;
       const audioJob = (async () => {
         if (!audioSrc) return;
-        for await (const chunk of audioChunks(scene.audio, scene.audioOffset || 0, duration)) {
+        for await (const chunk of audioChunks(scene.audio, scene.audioOffset || 0, duration, scene.gain || 1)) {
           if (aborted()) return;
           const m = performance.now();
           await audioSrc.add(chunk);
@@ -256,7 +258,8 @@ const VideoEngine = (() => {
     const start = actx.currentTime + 0.05;
     if (src) {
       const { end, fade } = Core.audioFade(scene.audio.duration, scene.audioOffset || 0, duration);
-      gain.gain.setValueAtTime(1, start + Math.max(0, end - fade));
+      gain.gain.setValueAtTime(scene.gain || 1, start);
+      gain.gain.setValueAtTime(scene.gain || 1, start + Math.max(0, end - fade));
       gain.gain.linearRampToValueAtTime(0, start + end);
       src.start(start, scene.audioOffset || 0, duration);
     }
@@ -369,7 +372,9 @@ const VideoEngine = (() => {
       if (scene.audio) {
         this.src = actx.createBufferSource();
         this.src.buffer = scene.audio;
-        this.src.connect(actx.destination);
+        // hear the same loudness as the export
+        if (scene.gain && scene.gain !== 1) { const g = actx.createGain(); g.gain.value = scene.gain; this.src.connect(g).connect(actx.destination); }
+        else this.src.connect(actx.destination);
         this.src.start(start, scene.audioOffset || 0, scene.duration);
       }
       const tick = () => {
@@ -397,9 +402,10 @@ const VideoEngine = (() => {
     box.innerHTML = `<div class="out-title">✅ Video đã sẵn sàng</div>
       <div class="row"><button class="primary" data-a="dl">Tải video (${formatBytes(blob.size)})</button>
       ${canShareFiles ? '<button data-a="share">Chia sẻ / Lưu vào Ảnh</button>' : ''}</div>
-      <div class="hint" data-a="name"></div>${note ? `<div class="hint warn">${note}</div>` : ''}
+      <div class="hint" data-a="name"></div>${note ? '<div class="hint warn" data-a="note"></div>' : ''}
       <video controls playsinline src="${url}"></video>`;
     box.querySelector('[data-a=name]').textContent = name; // file names are user input
+    if (note) box.querySelector('[data-a=note]').textContent = note; // may quote an encoder error message
     if (IS_IOS) {
       // iPhone: the share sheet's "Save Video" writes straight to Photos and copes better with big files than downloads.
       const tip = document.createElement('div');
@@ -418,13 +424,13 @@ const VideoEngine = (() => {
       const pv = container.closest('.split') && container.closest('.split').querySelector('.preview');
       const stacked = pv && pv.offsetWidth > container.offsetWidth * 0.8;
       const tabs = document.getElementById('tabs');
-      const cover = stacked ? pv.getBoundingClientRect().bottom : tabs ? tabs.getBoundingClientRect().bottom : 0;
+      const cover = stacked ? pv.getBoundingClientRect().bottom : tabs ? tabsCover() : 0;
       const y = box.getBoundingClientRect().top + window.scrollY - Math.max(0, cover) - 8;
       window.scrollTo({ top: y, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
     });
   }
 
-  return { render, estimate, Player, showOutput, capabilities, loadMediabunny, get lastFallbackReason() { return lastFallbackReason; }, tuning, timing };
+  return { render, estimate, Player, showOutput, capabilities, loadMediabunny, audioChunks, get lastFallbackReason() { return lastFallbackReason; }, tuning, timing };
 })();
 
 VideoEngine.capabilities().then((c) => {

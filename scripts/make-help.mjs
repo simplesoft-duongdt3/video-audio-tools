@@ -191,7 +191,7 @@ async function main() {
   await page.click('#tvTemplates [data-tpl=romance]');
   await page.locator('#tvScrub').evaluate((el) => { el.value = 1; el.dispatchEvent(new Event('input', { bubbles: true })); });
   await scrollTo('.drop[data-input=tvAudio]');
-  await shot('tv-options', [['.drop[data-input=tvAudio]', 1], ['#tvRender', 2], ['#tvZip', 3]]);
+  await shot('tv-options', [['.drop[data-input=tvAudio]', 1], ['#tvRender', 2], ['#tvLoud', 3]]);
 
   // --- music → video ---
   await go('audiovideo');
@@ -245,6 +245,44 @@ async function main() {
   await page.waitForTimeout(300);
   await scrollTo('#avTemplates');
   await shot('mine', [['#avTemplates [data-role=save-template]', 1], ['#avTemplates .tcard:has([data-tpl^="my-"])', 2]]);
+
+  // --- loudness + safe zones (Audio → Video) ---
+  await go('audiovideo');
+  await page.setInputFiles('#avAudio', song);
+  await page.waitForSelector('#avTrim:not([hidden])');
+  await page.waitForFunction(() => /LUFS/.test(document.getElementById('avLoudInfo').textContent));
+  await scrollTo('#avLoud');
+  await shot('loud', [['#avLoud', 1], ['#avLoudInfo', 2]]);
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.click('#tab-audiovideo .sz-chips button[data-sz=tiktok]');
+  await page.waitForTimeout(300);
+  await shot('safezone', [['#tab-audiovideo .sz-chips', 1], ['#tab-audiovideo .sz-safe', 2]]);
+  await page.click('#tab-audiovideo .sz-chips button[data-sz=off]');
+
+  // --- thumbnail + caption ---
+  await go('thumb');
+  await demoPhotos(page, 'thImg');
+  await page.waitForFunction(() => /anh-1/.test(document.getElementById('thImgInfo').textContent));
+  await page.fill('#thTitle', 'Đà Lạt *3 ngày 2 đêm* chỉ 2 triệu');
+  await page.fill('#thBadge', 'MỚI');
+  await page.waitForTimeout(400);
+  await scrollTo('#thStyles');
+  await shot('thumb', [['#thStyles', 1], ['#thTitle', 2]]);
+  await page.click('#thExport');
+  await page.waitForSelector('#thOut .card');
+  await scrollTo('#thExport');
+  await shot('thumb-done', [['#thExport', 1], ['#thOut .card', 2]]);
+  await page.fill('#thCaption', 'Review Đà Lạt 3 ngày 2 đêm chỉ 2 triệu 🌲 Lưu lại cho chuyến đi tới nhé! #dalat #dulich #reviewdulich');
+  await scrollTo('#thCaption');
+  await shot('caption', [['#thCaption', 1], ['#thCounts', 2]]);
+
+  // --- extract audio ---
+  await go('extract');
+  await page.setInputFiles('#exFile', song);
+  await page.waitForSelector('#exTrim:not([hidden])');
+  await page.waitForFunction(() => /LUFS/.test(document.getElementById('exLoudInfo').textContent));
+  await scrollTo('.drop[data-input=exFile]');
+  await shot('extract', [['.drop[data-input=exFile]', 1], ['#exTrim .trim-wave', 2], ['#exLoud', 3], ['#exRun', 4]]);
 
   // --- photo tools ---
   await go('convert');
@@ -331,7 +369,7 @@ function page_(s) {
 </header>
 
 <nav class="toc" aria-label="Mục lục">
-  <a href="#bat-dau">1. Bắt đầu</a><a href="#nhac">2. Chuẩn bị nhạc</a><a href="#anh-video">3. Ảnh + nhạc</a><a href="#chu-video">4. Chữ + nhạc</a><a href="#nhac-video">5. Chỉ có nhạc</a><a href="#luu">6. Lưu &amp; đăng TikTok</a><a href="#mau">7. Mẫu của tôi</a><a href="#anh">8. Sửa ảnh</a><a href="#loi">9. Gặp lỗi?</a>
+  <a href="#bat-dau">1. Bắt đầu</a><a href="#nhac">2. Chuẩn bị nhạc</a><a href="#anh-video">3. Ảnh + nhạc</a><a href="#chu-video">4. Chữ + nhạc</a><a href="#nhac-video">5. Chỉ có nhạc</a><a href="#am-luong">6. Âm lượng &amp; vùng bị che</a><a href="#anh-bia">7. Ảnh bìa &amp; caption</a><a href="#tach-am">8. Tách âm thanh</a><a href="#luu">9. Lưu &amp; đăng TikTok</a><a href="#mau">10. Mẫu của tôi</a><a href="#anh">11. Sửa ảnh</a><a href="#loi">12. Gặp lỗi?</a>
 </nav>
 
 <main>
@@ -340,7 +378,8 @@ function page_(s) {
   <ol>
     <li>Mở trang bằng <b>Safari</b> (Chrome trên iPhone cũng dùng được).</li>
     <li>Để mở nhanh như một app: bấm nút <b>Chia sẻ</b> <kbd>⬆︎</kbd> ở thanh dưới Safari → <b>Thêm vào MH chính</b> → <b>Thêm</b>.</li>
-    <li>Chọn công cụ ở thanh trên cùng <span class="n">1</span> — vuốt ngang để thấy hết 6 công cụ.</li>
+    <li>Chọn công cụ ở thanh trên cùng <span class="n">1</span> — vuốt ngang để thấy hết 8 công cụ, xếp theo nhóm: <b>Làm video</b>, <b>Đăng bài</b> (ảnh bìa, caption, tách âm thanh), <b>Ảnh</b>. Trên máy tính, các công cụ nằm ở cột bên trái.</li>
+    <li>Nút <b>Xem thử</b> / <b>Xuất video</b> luôn nằm ở đáy màn hình khi bạn cuộn xuống chỉnh — không cần cuộn tìm.</li>
     <li>Khung <b>xem trước</b> <span class="n">2</span> luôn nằm phía trên khi bạn cuộn xuống chỉnh, để thấy ngay thay đổi. Bấm <kbd>⤢</kbd> ở góc để phóng to.</li>
   </ol>
   ${fig(s.overview, 'Màn hình chính: thanh công cụ (1), xem trước (2), chọn ảnh (3)')}
@@ -394,9 +433,10 @@ function page_(s) {
   ${fig(s['tv-text'], 'Nhóm mẫu (1) và hàng mẫu (2)')}
   <ol>
     <li>Chọn nhạc <span class="n">1</span> (không bắt buộc) — thời lượng nhạc được chia đều cho các slide.</li>
-    <li>Bấm <b>Xuất video</b> <span class="n">2</span>, hoặc tải từng slide thành <b>ảnh PNG / .zip</b> <span class="n">3</span> để đăng dạng ảnh.</li>
+    <li>Chọn mức <b>Âm lượng</b> <span class="n">3</span> (xem mục 6), rồi bấm <b>Xuất video</b> <span class="n">2</span> — nút này luôn nằm ở đáy màn hình.</li>
+    <li>Muốn đăng dạng ảnh (carousel): bấm <b>Tải ảnh slide này (PNG)</b> hoặc <b>Tải tất cả slide (.zip)</b> ngay dưới nút xuất.</li>
   </ol>
-  ${fig(s['tv-options'], 'Chọn nhạc (1), xuất video (2), tải ảnh slide (3)')}
+  ${fig(s['tv-options'], 'Chọn nhạc (1), xuất video (2), âm lượng (3)')}
 </section>
 
 <section id="nhac-video">
@@ -449,8 +489,54 @@ function page_(s) {
   <div class="tip">💡 Không có gì bị cắt nếu bạn không bấm nút bỏ. Bài hát liền mạch thường không có đoạn im lặng nào — trang sẽ báo “Không thấy”.</div>
 </section>
 
+<section id="am-luong">
+  <h2>6. Âm lượng chuẩn &amp; vùng bị che</h2>
+  <h3>🔊 Âm lượng chuẩn TikTok / YouTube</h3>
+  <p>Ghi âm bằng điện thoại thường <b>nhỏ hơn</b> các video khác trên TikTok. Ô <b>Âm lượng</b> <span class="n">1</span> (có ở cả 3 tab làm video và tab Tách âm thanh) tự đưa tiếng về mức chuẩn:</p>
+  <ul>
+    <li><b>Chuẩn TikTok / YouTube (−14 LUFS)</b> — mặc định, hợp nhạc và video ngắn.</li>
+    <li><b>Podcast (−16 LUFS)</b> — hợp sách nói, podcast, bài giảng.</li>
+    <li><b>Giữ nguyên như file gốc</b> — không đổi gì.</li>
+  </ul>
+  <p>Dòng bên dưới <span class="n">2</span> cho biết đoạn bạn chọn đang to bao nhiêu và sẽ được tăng / giảm bao nhiêu dB. Trang không bao giờ tăng tới mức làm tiếng bị rè. Nút <b>Xem thử</b> phát đúng mức âm lượng sẽ xuất.</p>
+  ${fig(s.loud, 'Chọn mức âm lượng (1) và kết quả đo (2)')}
+  <h3>Vùng bị che (TikTok, Reels, Shorts)</h3>
+  <p>Nút thả tim, bình luận, tên kênh và caption của app che mất một phần video. Dưới khung xem trước, chọn <b>TikTok</b>, <b>Reels</b> hoặc <b>Shorts</b> <span class="n">1</span>: phần bị che được tô đỏ, khung nét đứt <span class="n">2</span> là vùng an toàn để đặt chữ quan trọng. Lớp tô chỉ để xem — <b>không có trong video</b> xuất ra.</p>
+  ${fig(s.safezone, 'Chọn ứng dụng (1) và vùng an toàn (2)')}
+  <div class="tip">💡 Reels che phía dưới nhiều nhất. Nếu đăng cả 3 nơi, hãy giữ chữ trong khung của <b>Reels</b>.</div>
+</section>
+
+<section id="anh-bia">
+  <h2>7. Ảnh bìa (thumbnail) &amp; caption</h2>
+  <p>Tab <b>🪧 Ảnh bìa &amp; caption</b>. Ảnh bìa đẹp giúp video được bấm xem nhiều hơn.</p>
+  <ol>
+    <li>Chọn <b>ảnh nền</b> — hoặc chọn một <b>video</b> rồi kéo thanh <b>Khung hình trong video</b> để lấy khoảnh khắc đẹp nhất.</li>
+    <li>Chọn <b>Khung</b>: YouTube 16:9 (có bản 4K), bìa TikTok / Shorts / Reels 9:16, Instagram 4:5, vuông.</li>
+    <li>Chọn <b>kiểu chữ</b> <span class="n">1</span>: Nổi bật, Tin nóng, Tối giản, Sang trọng, Dễ thương.</li>
+    <li>Gõ <b>tiêu đề</b> <span class="n">2</span>. Đặt từ khoá trong <b>*dấu sao*</b> để tô màu nổi bật, ví dụ <kbd>Đà Lạt *3 ngày 2 đêm*</kbd>. Có thể thêm dòng phụ và nhãn góc như “MỚI”, “PHẦN 2”.</li>
+  </ol>
+  ${fig(s.thumb, 'Kiểu chữ (1) và tiêu đề có từ khoá tô màu (2)')}
+  <p>Bấm <b>Tạo ảnh bìa</b> <span class="n">1</span> rồi <b>Tải</b> hoặc <b>Chia sẻ</b> <span class="n">2</span>. Ảnh JPG được giữ <b>dưới 2 MB</b> (chọn ≤ 50 MB nếu chỉ đăng YouTube). Bìa 9:16 tự đặt chữ trong vùng không bị nút của app che.</p>
+  ${fig(s['thumb-done'], 'Tạo ảnh bìa (1) và ảnh đã xong (2)')}
+  <h3>📝 Kiểm tra tiêu đề / caption</h3>
+  <p>Dán tiêu đề hoặc caption vào ô <span class="n">1</span>: trang đếm ký tự (emoji tính là 1) so với giới hạn của YouTube (tiêu đề 100, mô tả 5.000), TikTok (4.000), Reels (2.200), đếm hashtag và cảnh báo khi dùng quá nhiều <span class="n">2</span>.</p>
+  ${fig(s.caption, 'Ô caption (1) và kết quả kiểm tra (2)')}
+</section>
+
+<section id="tach-am">
+  <h2>8. Tách âm thanh từ video</h2>
+  <p>Tab <b>🎵 Tách âm thanh</b>: lấy nhạc / giọng nói từ video trong app Ảnh, hoặc cắt một đoạn bài hát.</p>
+  <ol>
+    <li>Chọn video hoặc audio <span class="n">1</span>.</li>
+    <li>Kéo 2 tay cầm trên sóng nhạc <span class="n">2</span> để chọn đoạn (có cả <b>✂️ Tìm đoạn im lặng thừa</b>).</li>
+    <li>Chọn mức <b>Âm lượng</b> <span class="n">3</span> và định dạng: <b>M4A</b> (nhỏ, nghe được trên iPhone) hoặc <b>WAV</b> (nguyên chất lượng).</li>
+    <li>Bấm <b>Tách &amp; lưu âm thanh</b> <span class="n">4</span>, nghe thử rồi tải hoặc chia sẻ.</li>
+  </ol>
+  ${fig(s.extract, 'Chọn file (1), chọn đoạn (2), âm lượng (3), tách (4)')}
+</section>
+
 <section id="luu">
-  <h2>6. Lưu video vào Ảnh &amp; đăng TikTok</h2>
+  <h2>9. Lưu video vào Ảnh &amp; đăng TikTok</h2>
   ${fig(s['iv-done'], 'Video đã xong: Chia sẻ / Lưu vào Ảnh (1) hoặc Tải video (2)')}
   <ol>
     <li>Khi video xong, trang tự cuộn tới kết quả. Bấm <b>Chia sẻ / Lưu vào Ảnh</b> <span class="n">1</span> → chọn <b>Lưu video</b> — video vào thẳng app Ảnh.</li>
@@ -461,14 +547,14 @@ function page_(s) {
 </section>
 
 <section id="mau">
-  <h2>7. Mẫu của tôi</h2>
+  <h2>10. Mẫu của tôi</h2>
   <p>Đã chỉnh màu, font, @kênh vừa ý? Bấm <b>＋ Lưu thành mẫu của tôi</b> <span class="n">1</span>, đặt tên. Lần sau chỉ cần chạm vào mẫu đó <span class="n">2</span> (nhóm <b>Mẫu của tôi</b>). Bấm <kbd>×</kbd> để xoá.</p>
   ${fig(s.mine, 'Lưu mẫu (1), mẫu đã lưu (2)')}
   <div class="warn">Mẫu được lưu trong Safari trên chính iPhone này. Nếu xoá dữ liệu Safari hoặc lâu không mở trang, mẫu có thể mất. Thêm trang vào Màn hình chính giúp giữ lâu hơn.</div>
 </section>
 
 <section id="anh">
-  <h2>8. Sửa ảnh</h2>
+  <h2>11. Sửa ảnh</h2>
   <div class="two">
     <div>
       <h3>Chuyển định dạng &amp; nén</h3>
@@ -484,7 +570,7 @@ function page_(s) {
 </section>
 
 <section id="loi">
-  <h2>9. Gặp lỗi?</h2>
+  <h2>12. Gặp lỗi?</h2>
   <details><summary>Không chọn được bài hát</summary><p>Xem mục <a href="#nhac">2. Chuẩn bị nhạc</a>: lưu bài vào app Tệp trước. Bài trong Apple Music không dùng được.</p></details>
   <details><summary>Video tải về không có tiếng</summary><p>Video luôn được xuất với âm thanh AAC (nghe được trên mọi app). Kiểm tra nút gạt im lặng của iPhone. Nếu vẫn không có tiếng, chạy <b>Tự kiểm tra thiết bị</b> bên dưới và gửi kết quả cho chúng tôi.</p></details>
   <details><summary>Báo "Không tải được" / "Failed to download"</summary><p>Dùng <b>Chia sẻ → Lưu video</b> thay vì nút Tải. Với bài dài, chọn đoạn ngắn hơn hoặc khung 720p.</p></details>

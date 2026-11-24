@@ -99,3 +99,66 @@ test('PROJECT RULE: when the UI changes, the iPhone guide must be regenerated (`
   assert.ok(g, 'Help/huong-dan-iphone.html has no ui-hash: run `npm run help`');
   assert.equal(g, uiHash(), 'index.html / js / css changed since Help/huong-dan-iphone.html was generated → update the guide text in scripts/make-help.mjs if a feature changed, then run `npm run help`');
 });
+
+/* ---------------- security (Tech Lead review) ---------------- */
+const { createHash } = require('node:crypto');
+const cspMeta = (html.match(/<meta http-equiv="Content-Security-Policy" content="([^"]+)">/) || [])[1] || '';
+const csp = Object.fromEntries(cspMeta.split(';').map((d) => d.trim().split(/\s+/)).filter((d) => d[0]).map(([k, ...v]) => [k, v]));
+
+test('security: every CDN script and stylesheet is pinned with Subresource Integrity (a hacked CDN cannot swap the code)', () => {
+  const tags = [...html.matchAll(/<(script|link)\b[^>]*\b(?:src|href)="(https:\/\/(?:cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net)[^"]+)"[^>]*>/g)];
+  assert.ok(tags.length >= 6, 'CDN tags found');
+  for (const [tag, , url] of tags) {
+    assert.match(tag, /integrity="sha(256|384|512)-[A-Za-z0-9+/=]+"/, url);
+    assert.match(tag, /crossorigin="anonymous"/, url);
+    assert.match(url, /@\d+\.\d+\.\d+|\/\d+\.\d+\.\d+\//, `${url}: pinned version`);
+  }
+});
+
+test('security: dynamically imported modules (Mediabunny, AAC encoder) have integrity in the import map', () => {
+  const map = JSON.parse(html.match(/<script type="importmap">([\s\S]*?)<\/script>/)[1]);
+  const engine = readFileSync(join(ROOT, 'js', 'video-engine.js'), 'utf8');
+  const aac = engine.match(/AAC_ENCODER_URL = '([^']+)'/)[1];
+  for (const url of [map.imports.mediabunny, aac]) assert.match(map.integrity[url] || '', /^sha384-/, url);
+});
+
+test('security: CSP is the first thing in <head> and only allows our CDNs (files can never be sent elsewhere)', () => {
+  assert.ok(cspMeta, 'CSP meta present');
+  assert.ok(html.indexOf('Content-Security-Policy') < html.indexOf('<link'), 'CSP before any resource');
+  assert.deepEqual(csp['default-src'], ["'self'"]);
+  assert.deepEqual(csp['object-src'], ["'none'"]);
+  assert.deepEqual(csp['base-uri'], ["'none'"]);
+  assert.deepEqual(csp['form-action'], ["'none'"]);
+  // where data could leave the page: nowhere but this site (fetch / XHR / beacons / images / media)
+  for (const d of ['connect-src', 'img-src', 'media-src']) {
+    for (const v of csp[d]) assert.ok(/^'self'$|^(blob|data):$/.test(v), `${d} must not allow another host: ${v}`);
+  }
+  // code: only the exact pinned library folders (anyone can publish other files on these CDNs)
+  for (const v of csp['script-src']) assert.ok(/^'/.test(v) || /^https:\/\/(cdn\.jsdelivr\.net\/npm|cdnjs\.cloudflare\.com\/ajax\/libs)\/.+@?\d+\.\d+\.\d+\/$/.test(v), `script-src too wide: ${v}`);
+  assert.ok(!csp['script-src'].includes("'unsafe-inline'"), 'no inline scripts allowed');
+  // …and every library the page loads is inside one of them (else it would be blocked)
+  const map = JSON.parse(html.match(/<script type="importmap">([\s\S]*?)<\/script>/)[1]);
+  const engine = readFileSync(join(ROOT, 'js', 'video-engine.js'), 'utf8');
+  const urls = [...html.matchAll(/<script src="(https:[^"]+)"/g)].map((m) => m[1]).concat(Object.values(map.imports), engine.match(/AAC_ENCODER_URL = '([^']+)'/)[1]);
+  for (const u of urls) assert.ok(csp['script-src'].some((p) => p.startsWith('https://') && u.startsWith(p)), `not allowed by script-src: ${u}`);
+});
+
+test('security: the CSP hash matches the inline import map (else Mediabunny would be blocked)', () => {
+  const body = html.match(/<script type="importmap">([\s\S]*?)<\/script>/)[1];
+  const h = createHash('sha256').update(body).digest('base64');
+  assert.ok(csp['script-src'].includes(`'sha256-${h}'`), 'update the sha256 in the CSP after editing the import map');
+  const inline = [...html.matchAll(/<script(?![^>]*\bsrc=)([^>]*)>/g)].filter((m) => !/type="importmap"/.test(m[1]));
+  assert.deepEqual(inline, [], 'no other inline <script>');
+  assert.doesNotMatch(html, /\son[a-z]+="/i, 'no inline event handlers');
+});
+
+test('security: no referrer leaks to the CDNs, external links open with rel="noopener"', () => {
+  assert.match(html, /<meta name="referrer" content="no-referrer">/);
+  for (const [a] of html.matchAll(/<a\b[^>]*target="_blank"[^>]*>/g)) assert.match(a, /rel="noopener"/, a);
+});
+
+test('security: user text never goes into innerHTML in the new creator tools', () => {
+  const src = readFileSync(join(ROOT, 'js', 'creator.js'), 'utf8');
+  // the only template literals in innerHTML are static markup + an object URL; names/titles use textContent
+  for (const m of src.matchAll(/innerHTML\s*=\s*`([\s\S]*?)`/g)) assert.doesNotMatch(m[1], /\$\{(?!url\}|canShareFiles \?)/, m[1].slice(0, 60));
+});

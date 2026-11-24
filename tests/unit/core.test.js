@@ -564,3 +564,196 @@ test('colour flow (≤ 30 % mix) never makes the two visualizer colours meet (QC
     assert.ok(C.contrast(x, y) > 1.3 || C.contrast(a, b) < 1.6, `${a}/${b} still distinct at the peak: ${x} vs ${y}`);
   }
 });
+
+/* ---------------- creator tools ---------------- */
+const sine = (sr, sec, amp, f = 997) => { const n = Math.round(sr * sec), x = new Float32Array(n); for (let i = 0; i < n; i++) x[i] = amp * Math.sin((2 * Math.PI * f * i) / sr); return x; };
+
+test('loudness: BS.1770 reference — 997 Hz full-scale sine is −3.01 LUFS on one channel, 0 on two', () => {
+  for (const sr of [44100, 48000]) {
+    const x = sine(sr, 5, 1);
+    assert.ok(Math.abs(C.loudness([x], sr).lufs + 3.01) < 0.05, `${sr} mono`);
+    assert.ok(Math.abs(C.loudness([x, x], sr).lufs) < 0.05, `${sr} stereo`);
+  }
+  const k = C.kWeighting(48000); // published 48 kHz coefficients (ITU-R BS.1770-4 table 1 / 2)
+  assert.ok(Math.abs(k[0].b[0] - 1.53512485958697) < 1e-9 && Math.abs(k[0].a[0] + 1.69065929318241) < 1e-9);
+  assert.ok(Math.abs(k[1].a[0] + 1.99004745483398) < 1e-9 && Math.abs(k[1].a[1] - 0.99007225036621) < 1e-9);
+});
+
+test('loudness: −20 dB tone is −20 LUFS; a range is measured, silence is −Infinity, gating ignores silent parts', () => {
+  const sr = 48000, x = sine(sr, 4, 0.1);
+  assert.ok(Math.abs(C.loudness([x, x], sr).lufs + 20) < 0.05);
+  const half = new Float32Array(sr * 8); half.set(x, sr * 4); // 4 s silence + 4 s tone
+  // the 3 blocks straddling the silence→tone edge are partly quiet but pass the relative gate (as in BS.1770 / ffmpeg)
+  assert.ok(Math.abs(C.loudness([half, half], sr).lufs + 20) < 0.4, 'absolute gate drops the silence');
+  assert.ok(C.loudness([half, half], sr).lufs > C.loudness([x, x], sr).lufs - 0.4 && C.loudness([half, half], sr).lufs < -20 + 1e-9, 'never louder than the tone');
+  assert.ok(Math.abs(C.loudness([half, half], sr, sr * 4, sr * 8).lufs + 20) < 0.1, 'range');
+  assert.equal(C.loudness([new Float32Array(sr)], sr).lufs, -Infinity);
+  assert.equal(C.loudness([x], sr, 0, sr).peak.toFixed(3), '0.100');
+  assert.ok(isFinite(C.loudness([sine(sr, 0.2, 0.5)], sr).lufs), 'a clip shorter than one 400 ms block is still measured');
+});
+
+test('loudness matches ffmpeg ebur128 on a real fixture', () => {
+  const b = readFileSync(join(FIX, 'tone.wav'));
+  let o = 12, fmt, data;
+  while (o < b.length) {
+    const id = b.toString('ascii', o, o + 4), sz = b.readUInt32LE(o + 4);
+    if (id === 'fmt ') fmt = { ch: b.readUInt16LE(o + 10), sr: b.readUInt32LE(o + 12) };
+    if (id === 'data') { data = b.subarray(o + 8, o + 8 + sz); break; }
+    o += 8 + sz;
+  }
+  const n = data.length / 2 / fmt.ch, ch = Array.from({ length: fmt.ch }, () => new Float32Array(n));
+  for (let i = 0; i < n; i++) for (let c = 0; c < fmt.ch; c++) ch[c][i] = data.readInt16LE((i * fmt.ch + c) * 2) / 32768;
+  const ours = C.loudness(ch, fmt.sr).lufs;
+  if (hasFfmpeg) {
+    const r = require('node:child_process').spawnSync('ffmpeg', ['-hide_banner', '-i', join(FIX, 'tone.wav'), '-af', 'ebur128', '-f', 'null', '-'], { encoding: 'utf8' });
+    const ref = +[...r.stderr.matchAll(/I:\s+(-?[0-9.]+) LUFS/g)].pop()[1]; // the last one is the summary
+    assert.ok(Math.abs(ours - ref) < 0.15, `ours ${ours} vs ffmpeg ${ref}`);
+  } else assert.ok(Math.abs(ours + 22.8) < 0.15);
+});
+
+test('normGain: reaches the target, never clips past the ceiling, never boosts > 20 dB, leaves silence alone', () => {
+  const g = C.normGain({ lufs: -20, peak: 0.1 }, -14);
+  assert.ok(Math.abs(g.db - 6) < 1e-9 && !g.limited);
+  const capped = C.normGain({ lufs: -20, peak: 0.9 }, -14, -1.5); // +6 dB would push the peak to 1.8
+  assert.ok(capped.limited && capped.gain * 0.9 <= Math.pow(10, -1.5 / 20) + 1e-12);
+  assert.ok(C.normGain({ lufs: -9, peak: 0.5 }, -14).db < 0, 'too loud → turned down');
+  assert.equal(C.normGain({ lufs: -60, peak: 0.001 }, -14).gain, 10, '+20 dB max');
+  assert.deepEqual(C.normGain({ lufs: -Infinity, peak: 0 }), { gain: 1, db: 0, limited: false });
+  assert.equal(C.LOUDNESS_TARGETS.social, -14);
+  assert.equal(C.LOUDNESS_TARGETS.podcast, -16);
+});
+
+test('safe zones: vertical frames only; the safe box is inside the frame and clear of the buttons on the right', () => {
+  for (const p of Object.keys(C.SAFE_ZONES)) {
+    const r = C.safeRect(p, 1080, 1920);
+    assert.ok(r.x > 0 && r.y > 0 && r.x + r.w < 1080 && r.y + r.h < 1920, p);
+    assert.ok(1080 - (r.x + r.w) >= 110, `${p}: right-side buttons (≥ 110 px)`);
+    assert.ok(1920 - (r.y + r.h) >= 470, `${p}: caption + username (≥ 470 px)`);
+  }
+  assert.ok(C.safeRect('reels', 1080, 1920).h < C.safeRect('tiktok', 1080, 1920).h, 'Reels covers more at the bottom');
+  assert.equal(C.safeRect('tiktok', 1920, 1080), null, '16:9 has no app overlay');
+  assert.equal(C.safeRect('nope', 1080, 1920), null);
+  assert.deepEqual(C.safeRect('tiktok', 540, 960), { x: 30, y: 65, w: 434, h: 655 }, 'scales with the frame');
+});
+
+test('containRect = CSS object-fit: contain', () => {
+  assert.deepEqual(C.containRect(1080, 1920, 300, 300), { x: 65.625, y: 0, w: 168.75, h: 300 });
+  assert.deepEqual(C.containRect(1920, 1080, 320, 400), { x: 0, y: 110, w: 320, h: 180 });
+  assert.deepEqual(C.containRect(0, 0, 10, 10), { x: 0, y: 0, w: 0, h: 0 });
+});
+
+test('encodeWav: valid header, interleaved 16-bit samples, range + gain + clipping; ffmpeg reads it', (t) => {
+  const L = Float32Array.from([0, 0.5, -0.5, 1, -1]), R = Float32Array.from([0.25, 0.25, 0.25, 0.25, 0.25]);
+  const w = Buffer.from(C.encodeWav([L, R], 44100, 1, 4, 2));
+  assert.equal(w.toString('ascii', 0, 4), 'RIFF');
+  assert.equal(w.toString('ascii', 8, 12), 'WAVE');
+  assert.equal(w.readUInt16LE(22), 2);
+  assert.equal(w.readUInt32LE(24), 44100);
+  assert.equal(w.readUInt32LE(28), 44100 * 4, 'byte rate');
+  assert.equal(w.readUInt32LE(40), 3 * 2 * 2, '3 frames × 2 ch × 2 bytes');
+  assert.equal(w.readUInt32LE(4), w.length - 8);
+  const s = [...Array(6)].map((_, i) => w.readInt16LE(44 + i * 2));
+  assert.deepEqual(s, [32767, 16384, -32768, 16384, 32767, 16384], 'gain 2, clipped at ±1, interleaved L R');
+  if (hasFfmpeg) {
+    const f = join(require('node:os').tmpdir(), `wav-${process.pid}.wav`);
+    require('node:fs').writeFileSync(f, C.encodeWav([sine(48000, 1, 0.5)], 48000));
+    const out = execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'stream=codec_name,channels,sample_rate', '-of', 'csv=p=0', f]).toString().trim();
+    require('node:fs').unlinkSync(f);
+    assert.equal(out, 'pcm_s16le,48000,1');
+  }
+});
+
+test('parseHighlight: *stars* mark keywords; unmatched stars stay text', () => {
+  assert.deepEqual(C.parseHighlight('Kiếm *10 triệu* đầu tiên'), [{ t: 'Kiếm ', hi: false }, { t: '10 triệu', hi: true }, { t: ' đầu tiên', hi: false }]);
+  assert.deepEqual(C.parseHighlight('*A**B*'), [{ t: 'A', hi: true }, { t: 'B', hi: true }]);
+  assert.deepEqual(C.parseHighlight('giá 5* sao'), [{ t: 'giá 5* sao', hi: false }]);
+  assert.deepEqual(C.parseHighlight(''), []);
+});
+
+test('fitQuality: best quality under the limit; falls back to the smallest when nothing fits; ≤ 8 encodes', async () => {
+  let calls = 0;
+  const enc = async (q) => { calls++; return { size: Math.round(q * 1000) }; }; // size grows with quality
+  const r = await C.fitQuality(enc, 700);
+  assert.ok(r.fits && r.blob.size <= 700 && r.blob.size > 680, JSON.stringify(r));
+  assert.ok(calls <= 8, `${calls} encodes`);
+  const big = await C.fitQuality(async (q) => ({ size: 5000 + q }), 100);
+  assert.equal(big.fits, false);
+  assert.equal(big.q, 0.5, 'smallest attempt');
+  assert.deepEqual(await C.fitQuality(async () => ({ size: 1 }), 10), { blob: { size: 1 }, q: 0.95, fits: true });
+});
+
+test('captionStats: emoji count once, unique hashtags (Vietnamese letters), limits, spam + broken-hashtag warnings', () => {
+  const s = C.captionStats('Học tiếng Anh 👨‍👩‍👧 #HọcTập #họctập #tiktokvn');
+  assert.equal(s.chars, 'Học tiếng Anh X #HọcTập #họctập #tiktokvn'.length);
+  assert.deepEqual(s.hashtags, ['#HọcTập', '#tiktokvn']);
+  assert.deepEqual(s.over, {});
+  assert.deepEqual(s.warnings, []);
+  assert.equal(C.captionStats('x'.repeat(101)).over.ytTitle, 1);
+  assert.ok(C.captionStats('x'.repeat(4001)).over.tiktok === 1);
+  const many = Array.from({ length: 61 }, (_, i) => '#t' + i).join(' ');
+  assert.match(C.captionStats(many).warnings[0], /hơn 60/);
+  assert.match(C.captionStats(Array.from({ length: 20 }, (_, i) => '#t' + i).join(' ')).warnings[0], /spam/);
+  assert.equal(C.captionStats('#a #b').warnings.length, 0, 'normal hashtags are fine');
+  assert.match(C.captionStats('vui # quá').warnings[0], /dấu #/);
+});
+
+test('checkFileSize: refuses only files over the limit, with a readable message', () => {
+  assert.equal(C.checkFileSize({ name: 'a.jpg', size: 10 }, 'image'), null);
+  assert.match(C.checkFileSize({ name: 'a.jpg', size: 151 * 1048576 }, 'image'), /quá lớn .* tối đa 150\.00 MB cho ảnh/);
+  assert.equal(C.checkFileSize({ name: 'a.mp4', size: 500 * 1048576 }, 'audio'), null);
+  assert.match(C.checkFileSize({ name: 'a.mp4', size: 2e9 }, 'audio'), /audio\/video/);
+});
+
+test('loudness index: identical to the one-shot measurement, whole track or any range, in any slice size', () => {
+  const sr = 44100, x = sine(sr, 12, 0.2), y = sine(sr, 12, 0.05, 220);
+  const one = C.loudnessIndex([x, y], sr);
+  assert.equal(one.step(), true);
+  const sliced = C.loudnessIndex([x, y], sr);
+  let steps = 0; while (!sliced.step(sr * 0.37)) steps++; // slice sizes that do not line up with 100 ms segments
+  assert.ok(steps > 20);
+  for (const [a, b] of [[0, 12], [2, 7.5], [0.3, 0.6], [11, 12]]) {
+    const ref = C.loudness([x, y], sr, a * sr, b * sr);
+    for (const idx of [one, sliced]) {
+      const r = C.loudnessRange(idx, a, b);
+      assert.ok(Math.abs(r.lufs - ref.lufs) < 0.05, `${a}-${b}: ${r.lufs} vs ${ref.lufs}`);
+      assert.ok(Math.abs(r.peak - ref.peak) < 1e-6);
+    }
+  }
+});
+
+test('loudness index: built once, then a range costs < 5 ms even for a 1-hour stereo podcast', () => {
+  const sr = 48000, x = new Float32Array(sr * 3600);
+  for (let i = 0; i < x.length; i += 7) x[i] = ((i * 2654435761) % 1000) / 4000 - 0.125;
+  const idx = C.loudnessIndex([x, x], sr);
+  let t = performance.now();
+  while (!idx.step(sr * 5)) {}
+  const build = performance.now() - t;
+  t = performance.now();
+  for (let k = 0; k < 20; k++) C.loudnessRange(idx, k * 60, k * 60 + 900);
+  const per = (performance.now() - t) / 20;
+  assert.ok(per < 5, `range query ${per.toFixed(2)} ms`);
+  assert.ok(build < 30000, `index build ${build | 0} ms`);
+});
+
+test('downmixStereo: mono doubled, stereo as is, quad and 5.1 like the Web Audio speaker down-mix (voice on C kept)', () => {
+  const v = (a) => Float32Array.from(a);
+  const m = v([0.5]);
+  assert.deepEqual(C.downmixStereo([m]), [m, m]);
+  const L = v([0.1]), R = v([0.2]);
+  assert.deepEqual(C.downmixStereo([L, R]), [L, R]);
+  const q = C.downmixStereo([v([0.2]), v([0.4]), v([0.6]), v([0.8])]);
+  assert.ok(Math.abs(q[0][0] - 0.4) < 1e-6 && Math.abs(q[1][0] - 0.6) < 1e-6);
+  const s = C.downmixStereo([v([0]), v([0]), v([0.3]), v([0.9]), v([0]), v([0])]); // L R C LFE SL SR: voice on C only
+  assert.ok(Math.abs(s[0][0] - 0.3 * Math.SQRT1_2) < 1e-6 && Math.abs(s[1][0] - 0.3 * Math.SQRT1_2) < 1e-6, 'centre to both sides, LFE dropped');
+  const three = [v([1]), v([2]), v([3])];
+  assert.deepEqual(C.downmixStereo(three), [three[0], three[1]], 'discrete: first two');
+});
+
+test('wavParts: byte-identical to encodeWav, in chunks (no single huge buffer)', () => {
+  const sr = 8000, a = sine(sr, 7.3, 0.4), b = sine(sr, 7.3, 0.2, 300);
+  const parts = C.wavParts([a, b], sr, 123, sr * 7 + 5, 1.7, 2);
+  assert.ok(parts.length >= 4);
+  assert.ok(parts.slice(1).every((p) => p.length <= 2 * sr * 2 * 2));
+  assert.equal(Buffer.compare(Buffer.concat(parts.map((p) => Buffer.from(p))), Buffer.from(C.encodeWav([a, b], sr, 123, sr * 7 + 5, 1.7))), 0);
+  assert.equal(C.wavParts([a], sr, 0, 0).length, 1, 'empty range → header only');
+});
